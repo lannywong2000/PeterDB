@@ -31,6 +31,8 @@ namespace PeterDB {
 
     class FileHandle {
     public:
+        std::FILE *pFile;
+        unsigned numberOfPages;
         // variables to keep the counter for each operation
         unsigned readPageCounter;
         unsigned writePageCounter;
@@ -39,6 +41,7 @@ namespace PeterDB {
         FileHandle();                                                       // Default constructor
         ~FileHandle();                                                      // Destructor
 
+        RC closeFile();                                                     // Close the file handler
         RC readPage(PageNum pageNum, void *data);                           // Get a specific page
         RC writePage(PageNum pageNum, const void *data);                    // Write a specific page
         RC appendPage(const void *data);                                    // Append a specific page
