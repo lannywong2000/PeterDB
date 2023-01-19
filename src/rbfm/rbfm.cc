@@ -59,7 +59,7 @@ namespace PeterDB {
         Slot slot;
         char * pSlot = (char *) pageBuffer + PAGE_SIZE - 2 * sizeof(unsigned short) - sizeof(Slot);
         for (unsigned short i = 0; i < numberOfSlot; i++) {
-            memcpy(&slot, pSlot, sizeof(Slot));
+            std::memcpy(&slot, pSlot, sizeof(Slot));
             slotDirectory.push_back(slot);
             pSlot = pSlot - sizeof(Slot);
         }
@@ -105,7 +105,7 @@ namespace PeterDB {
         unsigned short numberOfAttributes = recordDescriptor.size();
         unsigned numberOfNullBytes = numberOfAttributes % 8 == 0 ? numberOfAttributes / 8 : numberOfAttributes / 8 + 1;
         char bitmaps[numberOfNullBytes];
-        memcpy(bitmaps, (char *) data, numberOfNullBytes);
+        std::memcpy(bitmaps, (char *) data, numberOfNullBytes);
 
         recordLength = (numberOfAttributes + 1) * sizeof(unsigned short);
         unsigned pData = numberOfNullBytes;
@@ -118,7 +118,7 @@ namespace PeterDB {
             else if (attr.type == 0) recordLength = recordLength + sizeof(int);
             else if (attr.type == 1) recordLength = recordLength + sizeof(float);
             else {
-                memcpy(&length, (char *) data + pData, sizeof(int));
+                std::memcpy(&length, (char *) data + pData, sizeof(int));
                 pData = pData + length;
                 recordLength = recordLength + length;
             }
@@ -139,17 +139,17 @@ namespace PeterDB {
                 continue;
             }
             if (attr.type == 0) {
-                memcpy((char *) recordBuffer + pRecord, (char *) data + pData, sizeof(int));
+                std::memcpy((char *) recordBuffer + pRecord, (char *) data + pData, sizeof(int));
                 pRecord = pRecord + sizeof(int);
                 pData = pData + sizeof(int);
             } else if (attr.type == 1) {
-                memcpy((char *) recordBuffer + pRecord, (char *) data + pData, sizeof(float));
+                std::memcpy((char *) recordBuffer + pRecord, (char *) data + pData, sizeof(float));
                 pRecord = pRecord + sizeof(float);
                 pData = pData + sizeof(float);
             } else {
-                memcpy(&length, (char *) data + pData, sizeof(int));
+                std::memcpy(&length, (char *) data + pData, sizeof(int));
                 pData = pData + sizeof(int);
-                memcpy((char *) recordBuffer + pRecord, (char *) data + pData, length);
+                std::memcpy((char *) recordBuffer + pRecord, (char *) data + pData, length);
                 pRecord = pRecord + length;
                 pData = pData + length;
             }
@@ -172,8 +172,8 @@ namespace PeterDB {
         slot.offset = (short) startOfFreeSpace;
         slot.length = recordLength;
 
-        memcpy((char *) pageBuffer + startOfFreeSpace, recordBuffer, recordLength);
-        memcpy((char *) pageBuffer + PAGE_SIZE - 2 * sizeof(unsigned short) - (rid.slotNum + 1) * sizeof(Slot), &slot, sizeof(Slot));
+        std::memcpy((char *) pageBuffer + startOfFreeSpace, recordBuffer, recordLength);
+        std::memcpy((char *) pageBuffer + PAGE_SIZE - 2 * sizeof(unsigned short) - (rid.slotNum + 1) * sizeof(Slot), &slot, sizeof(Slot));
 
         if (rid.slotNum == slotDirectory.size()) *((unsigned short *) pageBuffer + PAGE_SIZE / sizeof(unsigned short) - 2) = rid.slotNum + 1;
         *((unsigned short *) pageBuffer + PAGE_SIZE / sizeof(unsigned short) - 1) = startOfFreeSpace + recordLength;
@@ -188,7 +188,7 @@ namespace PeterDB {
         if (slot.offset == -1) return -1;
         recordBuffer = malloc(slot.length);
         recordLength = slot.length;
-        memcpy(recordBuffer, (char *) pageBuffer + slot.offset, recordLength);
+        std::memcpy(recordBuffer, (char *) pageBuffer + slot.offset, recordLength);
         return 0;
     }
 
@@ -207,31 +207,31 @@ namespace PeterDB {
             const Attribute &attr = recordDescriptor[indexOfAttribute];
             unsigned indexOfBitmap = indexOfAttribute / 8;
             unsigned offsetOfBitmap = indexOfAttribute % 8;
-            memcpy(&offset, (unsigned short *) recordBuffer + 1 + indexOfAttribute, sizeof(unsigned short));
+            std::memcpy(&offset, (unsigned short *) recordBuffer + 1 + indexOfAttribute, sizeof(unsigned short));
             if (offset == 0) {
                 bitmaps[indexOfBitmap] |= (unsigned) 1 << (7 - offsetOfBitmap);
                 continue;
             }
             if (attr.type == 0) {
-                memcpy((char *) data + pData, (char *) recordBuffer + pRecord, sizeof(int));
+                std::memcpy((char *) data + pData, (char *) recordBuffer + pRecord, sizeof(int));
                 pRecord = pRecord + sizeof(int);
                 pData = pData + sizeof(int);
             } else if (attr.type == 1) {
-                memcpy((char *) data + pData, (char *) recordBuffer + pRecord, sizeof(float));
+                std::memcpy((char *) data + pData, (char *) recordBuffer + pRecord, sizeof(float));
                 pRecord = pRecord + sizeof(float);
                 pData = pData + sizeof(float);
             } else {
                 length = offset - prev;
-                memcpy((char *) data + pData, &length, sizeof(int));
+                std::memcpy((char *) data + pData, &length, sizeof(int));
                 pData = pData + sizeof(int);
-                memcpy((char *) data + pData, (char *) recordBuffer + pRecord, length);
+                std::memcpy((char *) data + pData, (char *) recordBuffer + pRecord, length);
                 pRecord = pRecord + length;
                 pData = pData + length;
             }
             prev = offset;
         }
 
-        memcpy((char *) data, bitmaps, numberOfNullBytes);
+        std::memcpy((char *) data, bitmaps, numberOfNullBytes);
 
         return 0;
     }
@@ -249,7 +249,7 @@ namespace PeterDB {
         unsigned numberOfAttributes = recordDescriptor.size();
         unsigned numberOfNullBytes = numberOfAttributes % 8 == 0 ? numberOfAttributes / 8 : numberOfAttributes / 8 + 1;
         char bitmaps[numberOfNullBytes];
-        memcpy(bitmaps, (char *) data, numberOfNullBytes);
+        std::memcpy(bitmaps, (char *) data, numberOfNullBytes);
         unsigned pData = numberOfNullBytes;
         int length;
         for (unsigned indexOfAttribute = 0; indexOfAttribute < numberOfAttributes; indexOfAttribute++) {
@@ -261,19 +261,19 @@ namespace PeterDB {
             if (bitmaps[indexOfBitmap] >> (7 - offsetOfBitmap) & (unsigned) 1) out << "NULL";
             else if (attr.type == 0) {
                 int intVal;
-                memcpy(&intVal, (char *) data + pData, sizeof(int));
+                std::memcpy(&intVal, (char *) data + pData, sizeof(int));
                 out << intVal;
                 pData = pData + sizeof(int);
             } else if (attr.type == 1) {
                 float floatVal;
-                memcpy(&floatVal, (char *) data + pData, sizeof(float));
+                std::memcpy(&floatVal, (char *) data + pData, sizeof(float));
                 out << floatVal;
                 pData = pData + sizeof(float);
             } else if (attr.type == 2) {
-                memcpy(&length, (char *) data + pData, sizeof(int));
+                std::memcpy(&length, (char *) data + pData, sizeof(int));
                 pData = pData + sizeof(int);
                 char stringVal[length];
-                memcpy(stringVal, (char *) data + pData, length);
+                std::memcpy(stringVal, (char *) data + pData, length);
                 for (int i = 0; i < length; i++) out << stringVal[i];
                 pData = pData + length;
             } else return -1;
