@@ -6,6 +6,7 @@
 #include <cassert>
 #include <iomanip>
 #include <cmath>
+#include <climits>
 #include <algorithm>
 #include <iostream>
 #include <unordered_map>
