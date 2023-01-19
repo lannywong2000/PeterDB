@@ -77,6 +77,7 @@ namespace PeterDB {
     private:
         void *pageBuffer = nullptr;
         void *recordBuffer = nullptr;
+        unsigned short recordLength;
 
     public:
         static RecordBasedFileManager &instance();                          // Access to the singleton instance
