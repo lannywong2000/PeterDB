@@ -58,7 +58,6 @@ namespace PeterDB {
     }
 
     FileHandle::FileHandle() {
-        pFile = nullptr;
         numberOfPages = 0;
         readPageCounter = 0;
         writePageCounter = 0;
