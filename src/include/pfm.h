@@ -31,7 +31,7 @@ namespace PeterDB {
 
     class FileHandle {
     public:
-        std::FILE *pFile;
+        std::FILE *pFile = nullptr;
         unsigned numberOfPages;
         // variables to keep the counter for each operation
         unsigned readPageCounter;
