@@ -401,7 +401,6 @@ namespace PeterDBTesting {
                                     << "Read a deleted record should not success.";
     }
 
-    /**
     TEST_F(RBFM_Test_2, varchar_compact_size) {
         // Checks whether VarChar is implemented correctly or not.
         //
@@ -934,6 +933,5 @@ namespace PeterDBTesting {
             ASSERT_EQ(memcmp(inBuffer, outBuffer, size), 0) << "Reading unmatched data.";
         }
     }
-     **/
 
 }// namespace PeterDBTesting
