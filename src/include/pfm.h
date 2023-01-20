@@ -2,6 +2,7 @@
 #define _pfm_h_
 
 #define PAGE_SIZE 4096
+#define RECORD_SIZE 1000
 
 #include <string>
 #include <cstring>

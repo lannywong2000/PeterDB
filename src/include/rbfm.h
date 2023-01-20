@@ -75,11 +75,6 @@ namespace PeterDB {
     };
 
     class RecordBasedFileManager {
-    private:
-        void *pageBuffer = nullptr;
-        void *recordBuffer = nullptr;
-        unsigned short recordLength;
-
     public:
         static RecordBasedFileManager &instance();                          // Access to the singleton instance
 
@@ -91,27 +86,27 @@ namespace PeterDB {
 
         RC closeFile(FileHandle &fileHandle);                               // Close a record-based file
 
-        RC toPageBuffer(FileHandle &fileHandle, unsigned pageNum);          // Load page pageNum to the page buffer
+        RC toPageBuffer(FileHandle &fileHandle, unsigned pageNum, void *pageBuffer);          // Load page pageNum to the page buffer
 
         RC appendEmptyPage(FileHandle &fileHandle);                         // Append a structured empty page to the end of the paged file
 
-        unsigned short getFreeSpace();     // Get free space in page pageNum
+        unsigned short getFreeSpace(const void *pageBuffer);     // Get free space in page pageNum
 
-        unsigned short getStartOfFreeSpace();                               // Get the offset to the free space
+        unsigned short getStartOfFreeSpace(const void *pageBuffer);                               // Get the offset to the free space
 
-        unsigned short getNumberOfSlot();                                   // Get the number of slot in page pageNum
+        unsigned short getNumberOfSlot(const void *pageBuffer);                                   // Get the number of slot in page pageNum
 
-        std::vector<Slot> getSlotDirectory();              // Get the slot directory
+        std::vector<Slot> getSlotDirectory(const void *pageBuffer);              // Get the slot directory
 
         unsigned short getFreeSlotNum(const std::vector<Slot> &slotDirectory);       // Get the number of free slot in the slot directory
 
-        unsigned findFreePage(FileHandle &fileHandle);                      // Find a free page for a record buffer data to store
+        unsigned findFreePage(FileHandle &fileHandle, void *pageBuffer, unsigned short recordLength);                      // Find a free page for a record buffer data to store
 
-        RC toRecordBuffer(const std::vector<Attribute> &recordDescriptor, const void *data);     // convert data to record using descriptor
+        RC toRecordBuffer(const std::vector<Attribute> &recordDescriptor, const void *data, void *recordBuffer, unsigned short &recordLength);     // convert data to record using descriptor
 
-        RC getRecordBuffer(FileHandle &fileHandle, const RID &rid);         // Get the record from file to buffer
+        RC getRecordBuffer(FileHandle &fileHandle, const RID &rid, void *pageBuffer, void *recordBuffer, unsigned short &recordLength);         // Get the record from file to buffer
 
-        RC toData(const std::vector<Attribute> &recordDescriptor, void *data);      // Transform record buffer to data
+        RC toData(const std::vector<Attribute> &recordDescriptor, const void *recordBuffer, void *data);      // Transform record buffer to data
 
         //  Format of the data passed into the function is the following:
         //  [n byte-null-indicators for y fields] [actual value for the first field] [actual value for the second field] ...
