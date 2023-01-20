@@ -118,26 +118,11 @@ namespace PeterDB {
         std::memcpy(bitmaps, (char *) data, numberOfNullBytes);
 
         fileHandle.recordLength = (numberOfAttributes + 1) * sizeof(unsigned short);
-        unsigned pData = numberOfNullBytes;
-        int length;
-        for (unsigned indexOfAttribute = 0; indexOfAttribute < numberOfAttributes; indexOfAttribute++) {
-            const Attribute &attr = recordDescriptor[indexOfAttribute];
-            unsigned indexOfBitmap = indexOfAttribute / 8;
-            unsigned offsetOfBitmap = indexOfAttribute % 8;
-            if (bitmaps[indexOfBitmap] >> (7 - offsetOfBitmap) & (unsigned) 1) continue;
-            else if (attr.type == 0) fileHandle.recordLength = fileHandle.recordLength + sizeof(int);
-            else if (attr.type == 1) fileHandle.recordLength = fileHandle.recordLength + sizeof(float);
-            else {
-                std::memcpy(&length, (char *) data + pData, sizeof(int));
-                pData = pData + length;
-                fileHandle.recordLength = fileHandle.recordLength + length;
-            }
-            pData = pData + sizeof(unsigned);
-        }
 
         std::memcpy(fileHandle.recordBuffer, &numberOfAttributes, sizeof(unsigned short));
 
-        pData = numberOfNullBytes;
+        int length;
+        unsigned pData = numberOfNullBytes;
         unsigned short pRecord = (numberOfAttributes + 1) * sizeof(unsigned short);
         for (unsigned indexOfAttribute = 0; indexOfAttribute < numberOfAttributes; indexOfAttribute++) {
             const Attribute &attr = recordDescriptor[indexOfAttribute];
@@ -149,16 +134,19 @@ namespace PeterDB {
             }
             if (attr.type == 0) {
                 std::memcpy((char *) fileHandle.recordBuffer + pRecord, (char *) data + pData, sizeof(int));
+                fileHandle.recordLength = fileHandle.recordLength + sizeof(int);
                 pRecord = pRecord + sizeof(int);
                 pData = pData + sizeof(int);
             } else if (attr.type == 1) {
                 std::memcpy((char *) fileHandle.recordBuffer + pRecord, (char *) data + pData, sizeof(float));
+                fileHandle.recordLength = fileHandle.recordLength + sizeof(float);
                 pRecord = pRecord + sizeof(float);
                 pData = pData + sizeof(float);
             } else {
                 std::memcpy(&length, (char *) data + pData, sizeof(int));
                 pData = pData + sizeof(int);
                 std::memcpy((char *) fileHandle.recordBuffer + pRecord, (char *) data + pData, length);
+                fileHandle.recordLength = fileHandle.recordLength + length;
                 pRecord = pRecord + length;
                 pData = pData + length;
             }
