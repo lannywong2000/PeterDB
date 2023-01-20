@@ -53,6 +53,11 @@ namespace PeterDB {
             fileHandle.readPageCounter = buffer[1];
             fileHandle.writePageCounter = buffer[2];
             fileHandle.appendPageCounter = buffer[3];
+            fileHandle.pageBuffer = malloc(PAGE_SIZE);
+            fileHandle.recordBuffer = malloc(RECORD_SIZE);
+            memset(fileHandle.pageBuffer, 0, PAGE_SIZE);
+            memset(fileHandle.recordBuffer, 0, RECORD_SIZE);
+            fileHandle.curPageNum = -1;
             return 0;
         } else return -1;
     }
@@ -75,6 +80,10 @@ namespace PeterDB {
         fseek(pFile, 0, SEEK_SET);
         unsigned buffer[4] = {numberOfPages, readPageCounter, writePageCounter, appendPageCounter};
         fwrite(buffer, sizeof(unsigned), 4, pFile);
+
+        free(pageBuffer);
+        free(recordBuffer);
+
         return fclose(pFile);
     }
 
