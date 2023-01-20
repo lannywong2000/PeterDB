@@ -26,7 +26,7 @@ namespace PeterDB {
         FILE *pFile = fopen(fileName.c_str(), "w+b");
         if (pFile == nullptr) return -1;
         void * pageBuffer = malloc(PAGE_SIZE);
-        assert(pageBuffer);
+        assert(pageBuffer != nullptr);
         memset(pageBuffer, 0, PAGE_SIZE);
         unsigned buffer[4] = {0};
         std::memcpy(pageBuffer, buffer, sizeof(unsigned) * 4);
