@@ -4,7 +4,6 @@
 #include <vector>
 #include <ostream>
 #include <cstring>
-#include <cassert>
 
 #include "pfm.h"
 

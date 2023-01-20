@@ -37,7 +37,6 @@ namespace PeterDB {
     RC RecordBasedFileManager::toPageBuffer(FileHandle &fileHandle, unsigned int pageNum) {
         if (pageBuffer != nullptr) free(pageBuffer);
         pageBuffer = malloc(PAGE_SIZE);
-        assert(pageBuffer != nullptr);
         memset(pageBuffer, 0, PAGE_SIZE);
         return fileHandle.readPage(pageNum, pageBuffer);
     }
@@ -45,7 +44,6 @@ namespace PeterDB {
     RC RecordBasedFileManager::appendEmptyPage(FileHandle &fileHandle) {
         if (pageBuffer != nullptr) free(pageBuffer);
         pageBuffer = malloc(PAGE_SIZE);
-        assert(pageBuffer != nullptr);
         memset(pageBuffer, 0, PAGE_SIZE);
         return fileHandle.appendPage(pageBuffer);
     }
@@ -130,7 +128,6 @@ namespace PeterDB {
 
         if (recordBuffer != nullptr) free(recordBuffer);
         recordBuffer = malloc(recordLength);
-        assert(recordBuffer != nullptr);
         memset(recordBuffer, 0, recordLength);
         *((unsigned short *) recordBuffer) = numberOfAttributes;
 
@@ -194,7 +191,6 @@ namespace PeterDB {
         if (slot.offset == -1) return -1;
         if (recordBuffer != nullptr) free(recordBuffer);
         recordBuffer = malloc(slot.length);
-        assert(recordBuffer != nullptr);
         memset(recordBuffer, 0, slot.length);
         recordLength = slot.length;
         std::memcpy(recordBuffer, (char *) pageBuffer + slot.offset, recordLength);

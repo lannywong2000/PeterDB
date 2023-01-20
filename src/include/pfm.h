@@ -5,7 +5,6 @@
 
 #include <string>
 #include <cstring>
-#include <cassert>
 
 namespace PeterDB {
 
