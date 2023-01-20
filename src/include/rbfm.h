@@ -88,7 +88,7 @@ namespace PeterDB {
 
         RC toPageBuffer(FileHandle &fileHandle, unsigned pageNum, void *pageBuffer);          // Load page pageNum to the page buffer
 
-        RC appendEmptyPage(FileHandle &fileHandle);                         // Append a structured empty page to the end of the paged file
+        RC appendEmptyPage(FileHandle &fileHandle, void *pageBuffer);                         // Append a structured empty page to the end of the paged file
 
         unsigned short getFreeSpace(const void *pageBuffer);     // Get free space in page pageNum
 

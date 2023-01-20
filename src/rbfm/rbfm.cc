@@ -36,16 +36,15 @@ namespace PeterDB {
         return fileHandle.readPage(pageNum, pageBuffer);
     }
 
-    RC RecordBasedFileManager::appendEmptyPage(FileHandle &fileHandle) {
-        void *pageBuffer = malloc(PAGE_SIZE);
+    RC RecordBasedFileManager::appendEmptyPage(FileHandle &fileHandle, void *pageBuffer) {
         memset(pageBuffer, 0, PAGE_SIZE);
         RC rc = fileHandle.appendPage(pageBuffer);
-        free(pageBuffer);
         return rc;
     }
 
     unsigned short RecordBasedFileManager::getNumberOfSlot(const void *pageBuffer) {
-        unsigned short numberOfSlot = *((unsigned short *) pageBuffer + PAGE_SIZE / sizeof(unsigned short) - 2);
+        unsigned short numberOfSlot;
+        std::memcpy(&numberOfSlot, (char *) pageBuffer + PAGE_SIZE - 2 * sizeof(unsigned short), sizeof(unsigned short));
         return numberOfSlot;
     }
 
@@ -72,7 +71,8 @@ namespace PeterDB {
     }
 
     unsigned short RecordBasedFileManager::getStartOfFreeSpace(const void *pageBuffer) {
-        unsigned short startOfFreeSpace = *((unsigned short *) pageBuffer + PAGE_SIZE / sizeof(unsigned short) - 1);
+        unsigned short startOfFreeSpace;
+        std::memcpy(&startOfFreeSpace, (char *) pageBuffer + PAGE_SIZE - sizeof(unsigned short), sizeof(unsigned short));
         return startOfFreeSpace;
     }
 
@@ -93,8 +93,7 @@ namespace PeterDB {
             bool hasFreeSlot = getFreeSlotNum(slotDirectory) != slotDirectory.size();
             if (hasFreeSlot || recordLength + sizeof(Slot) <= freeSpace) return pageNum;
         }
-        appendEmptyPage(fileHandle);
-        toPageBuffer(fileHandle, numberOfPages, pageBuffer);
+        appendEmptyPage(fileHandle, pageBuffer);
         return numberOfPages;
     }
 
@@ -132,7 +131,10 @@ namespace PeterDB {
             const Attribute &attr = recordDescriptor[indexOfAttribute];
             unsigned indexOfBitmap = indexOfAttribute / 8;
             unsigned offsetOfBitmap = indexOfAttribute % 8;
-            if (bitmaps[indexOfBitmap] >> (7 - offsetOfBitmap) & (unsigned) 1) continue;
+            if (bitmaps[indexOfBitmap] >> (7 - offsetOfBitmap) & (unsigned) 1) {
+                std::memset((char *) recordBuffer + (indexOfAttribute + 1) * sizeof(unsigned short), 0, sizeof(unsigned short));
+                continue;
+            }
             if (attr.type == 0) {
                 std::memcpy((char *) recordBuffer + pRecord, (char *) data + pData, sizeof(int));
                 pRecord = pRecord + sizeof(int);
@@ -176,7 +178,10 @@ namespace PeterDB {
         std::memcpy((char *) pageBuffer + startOfFreeSpace, recordBuffer, recordLength);
         std::memcpy((char *) pageBuffer + PAGE_SIZE - 2 * sizeof(unsigned short) - (rid.slotNum + 1) * sizeof(Slot), &slot, sizeof(Slot));
 
-        if (rid.slotNum == slotDirectory.size()) *((unsigned short *) pageBuffer + PAGE_SIZE / sizeof(unsigned short) - 2) = rid.slotNum + 1;
+        if (rid.slotNum == slotDirectory.size()) {
+            unsigned short newSlotNum = rid.slotNum + 1;
+            std::memcpy((char *) pageBuffer + PAGE_SIZE - 2 * sizeof(unsigned short), &newSlotNum, sizeof(unsigned short));
+        }
         startOfFreeSpace = startOfFreeSpace + recordLength;
         std::memcpy((char *) pageBuffer + PAGE_SIZE - sizeof(unsigned short), &startOfFreeSpace, sizeof(unsigned short));
 
