@@ -25,8 +25,11 @@ namespace PeterDB {
         if (exists(fileName)) return -1;
         FILE *pFile = fopen(fileName.c_str(), "w+b");
         if (pFile == nullptr) return -1;
+        void * pageBuffer = malloc(PAGE_SIZE);
+        memset(pageBuffer, 0, PAGE_SIZE);
         unsigned buffer[4] = {0};
-        fwrite(buffer, sizeof(unsigned), PAGE_SIZE / sizeof(unsigned), pFile);
+        std::memcpy(pageBuffer, buffer, sizeof(unsigned) * 4);
+        fwrite(pageBuffer, sizeof(char), PAGE_SIZE, pFile);
         fclose(pFile);
         return 0;
     }
