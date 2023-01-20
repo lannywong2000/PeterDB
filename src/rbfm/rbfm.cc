@@ -41,9 +41,7 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::appendEmptyPage(FileHandle &fileHandle) {
         pageBuffer = malloc(PAGE_SIZE);
-        unsigned short n = PAGE_SIZE / sizeof(unsigned short);
-        *((unsigned short *) pageBuffer + n - 1) = 0;
-        *((unsigned short *) pageBuffer + n - 2) = 0;
+        memset(pageBuffer, 0, PAGE_SIZE);
         return fileHandle.appendPage(pageBuffer);
     }
 
