@@ -104,7 +104,7 @@ namespace PeterDB {
     }
 
     RC FileHandle::appendPage(const void *data) {
-        fseek(pFile, 0, SEEK_END);
+        fseek(pFile, PAGE_SIZE * (numberOfPages + 1), SEEK_SET);
         fwrite(data, sizeof(char), PAGE_SIZE, pFile);
         numberOfPages = numberOfPages + 1;
         appendPageCounter = appendPageCounter + 1;
