@@ -41,6 +41,7 @@ namespace PeterDB {
         unsigned appendPageCounter;
 
         void *pageBuffer = nullptr;
+        int curPageNum;
         void *recordBuffer = nullptr;
         unsigned short recordLength;
 

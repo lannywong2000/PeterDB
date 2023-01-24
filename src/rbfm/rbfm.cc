@@ -33,10 +33,12 @@ namespace PeterDB {
     }
 
     RC RecordBasedFileManager::toPageBuffer(FileHandle &fileHandle, unsigned pageNum) {
+        fileHandle.curPageNum = pageNum;
         return fileHandle.readPage(pageNum, fileHandle.pageBuffer);
     }
 
     RC RecordBasedFileManager::appendEmptyPage(FileHandle &fileHandle) {
+        fileHandle.curPageNum = fileHandle.getNumberOfPages();
         memset(fileHandle.pageBuffer, 0, PAGE_SIZE);
         RC rc = fileHandle.appendPage(fileHandle.pageBuffer);
         return rc;
@@ -83,7 +85,8 @@ namespace PeterDB {
         return freeSpace;
     }
 
-    bool RecordBasedFileManager::isLastPageFree(FileHandle &fileHandle) {
+    bool RecordBasedFileManager::isCurrentPageFree(FileHandle &fileHandle) {
+        if (fileHandle.curPageNum == -1) return false;
         unsigned short freeSpace = getFreeSpace(fileHandle);
         if (fileHandle.recordLength > freeSpace) return false;
         std::vector<Slot> slotDirectory = getSlotDirectory(fileHandle);
@@ -93,12 +96,18 @@ namespace PeterDB {
     }
 
     unsigned RecordBasedFileManager::findFreePage(FileHandle &fileHandle) {
+        if (isCurrentPageFree(fileHandle)) return fileHandle.curPageNum;
         unsigned numberOfPages = fileHandle.getNumberOfPages();
-        if (numberOfPages == 0 || !isLastPageFree(fileHandle)) {
-            appendEmptyPage(fileHandle);
-            return numberOfPages;
+        for (unsigned pageNum = 0; pageNum < numberOfPages; pageNum++) {
+            toPageBuffer(fileHandle, pageNum);
+            unsigned short freeSpace = getFreeSpace(fileHandle);
+            if (fileHandle.recordLength > freeSpace) continue;
+            std::vector<Slot> slotDirectory = getSlotDirectory(fileHandle);
+            bool hasFreeSlot = getFreeSlotNum(slotDirectory) != slotDirectory.size();
+            if (hasFreeSlot || fileHandle.recordLength + sizeof(Slot) <= freeSpace) return pageNum;
         }
-        return numberOfPages - 1;
+        appendEmptyPage(fileHandle);
+        return numberOfPages;
     }
 
     RC RecordBasedFileManager::toRecordBuffer(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const void *data) {
@@ -278,25 +287,24 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const RID &rid) {
-        return 0;
+        return -1;
     }
 
     RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const void *data, const RID &rid) {
-        return 0;
+        return -1;
     }
 
     RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                              const RID &rid, const std::string &attributeName, void *data) {
-        return 0;
+        return -1;
     }
 
     RC RecordBasedFileManager::scan(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                     const std::string &conditionAttribute, const CompOp compOp, const void *value,
                                     const std::vector<std::string> &attributeNames,
                                     RBFM_ScanIterator &rbfm_ScanIterator) {
-        return 0;
+        return -1;
     }
 
 } // namespace PeterDB
-
