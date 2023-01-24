@@ -86,7 +86,7 @@ namespace PeterDB {
 
         RC closeFile(FileHandle &fileHandle);                               // Close a record-based file
 
-        RC toPageBuffer(FileHandle &fileHandle, unsigned pageNum);          // Load page pageNum to the page buffer
+        RC getPageBuffer(FileHandle &fileHandle, unsigned pageNum);          // Load page pageNum to the page buffer
 
         RC appendEmptyPage(FileHandle &fileHandle);                         // Append a structured empty page to the end of the paged file
 
@@ -94,7 +94,7 @@ namespace PeterDB {
 
         unsigned short getStartOfFreeSpace(FileHandle &fileHandle);                               // Get the offset to the free space
 
-        unsigned short getNumberOfSlot(const void *pageBuffer);                                   // Get the number of slot in page pageNum
+        unsigned short getNumberOfSlot(FileHandle &fileHandle);                                   // Get the number of slot in page pageNum
 
         std::vector<Slot> getSlotDirectory(FileHandle &fileHandle);              // Get the slot directory
 

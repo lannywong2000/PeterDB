@@ -32,27 +32,27 @@ namespace PeterDB {
         return pfm.closeFile(fileHandle);
     }
 
-    RC RecordBasedFileManager::toPageBuffer(FileHandle &fileHandle, unsigned pageNum) {
+    RC RecordBasedFileManager::getPageBuffer(FileHandle &fileHandle, unsigned pageNum) {
         fileHandle.curPageNum = pageNum;
         return fileHandle.readPage(pageNum, fileHandle.pageBuffer);
     }
 
     RC RecordBasedFileManager::appendEmptyPage(FileHandle &fileHandle) {
         fileHandle.curPageNum = fileHandle.getNumberOfPages();
-        memset(fileHandle.pageBuffer, 0, PAGE_SIZE);
+        std::memset(fileHandle.pageBuffer, 0, PAGE_SIZE);
         RC rc = fileHandle.appendPage(fileHandle.pageBuffer);
         return rc;
     }
 
-    unsigned short RecordBasedFileManager::getNumberOfSlot(const void *pageBuffer) {
+    unsigned short RecordBasedFileManager::getNumberOfSlot(FileHandle &fileHandle) {
         unsigned short numberOfSlot;
-        std::memcpy(&numberOfSlot, (char *) pageBuffer + PAGE_SIZE - 2 * sizeof(unsigned short), sizeof(unsigned short));
+        std::memcpy(&numberOfSlot, (char *) fileHandle.pageBuffer + PAGE_SIZE - 2 * sizeof(unsigned short), sizeof(unsigned short));
         return numberOfSlot;
     }
 
     std::vector<Slot> RecordBasedFileManager::getSlotDirectory(FileHandle &fileHandle) {
         std::vector<Slot> slotDirectory;
-        unsigned short numberOfSlot = getNumberOfSlot(fileHandle.pageBuffer);
+        unsigned short numberOfSlot = getNumberOfSlot(fileHandle);
         if (numberOfSlot == 0) return slotDirectory;
         Slot slot;
         char * pSlot = (char *) fileHandle.pageBuffer + PAGE_SIZE - 2 * sizeof(unsigned short) - sizeof(Slot);
@@ -80,7 +80,7 @@ namespace PeterDB {
 
     unsigned short RecordBasedFileManager::getFreeSpace(FileHandle &fileHandle) {
         unsigned short startOfFreeSpace = getStartOfFreeSpace(fileHandle);
-        unsigned short numberOfSlot = getNumberOfSlot(fileHandle.pageBuffer);
+        unsigned short numberOfSlot = getNumberOfSlot(fileHandle);
         unsigned short freeSpace = PAGE_SIZE - startOfFreeSpace - 2 * sizeof(unsigned short) - numberOfSlot * sizeof(Slot);
         return freeSpace;
     }
@@ -99,7 +99,7 @@ namespace PeterDB {
         if (isCurrentPageFree(fileHandle)) return fileHandle.curPageNum;
         unsigned numberOfPages = fileHandle.getNumberOfPages();
         for (unsigned pageNum = 0; pageNum < numberOfPages; pageNum++) {
-            toPageBuffer(fileHandle, pageNum);
+            getPageBuffer(fileHandle, pageNum);
             unsigned short freeSpace = getFreeSpace(fileHandle);
             if (fileHandle.recordLength > freeSpace) continue;
             std::vector<Slot> slotDirectory = getSlotDirectory(fileHandle);
@@ -113,24 +113,26 @@ namespace PeterDB {
     RC RecordBasedFileManager::toRecordBuffer(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const void *data) {
         if (recordDescriptor.empty()) return -1;
 
+        std::memset(fileHandle.recordBuffer, 0, 1);
+
         unsigned short numberOfAttributes = recordDescriptor.size();
         unsigned numberOfNullBytes = numberOfAttributes % 8 == 0 ? numberOfAttributes / 8 : numberOfAttributes / 8 + 1;
         char bitmaps[numberOfNullBytes];
         std::memcpy(bitmaps, (char *) data, numberOfNullBytes);
 
-        fileHandle.recordLength = (numberOfAttributes + 1) * sizeof(unsigned short);
+        fileHandle.recordLength = 1 + (numberOfAttributes + 1) * sizeof(unsigned short);
 
-        std::memcpy(fileHandle.recordBuffer, &numberOfAttributes, sizeof(unsigned short));
+        std::memcpy((char *) fileHandle.recordBuffer + 1, &numberOfAttributes, sizeof(unsigned short));
 
         int length;
         unsigned pData = numberOfNullBytes;
-        unsigned short pRecord = (numberOfAttributes + 1) * sizeof(unsigned short);
+        unsigned short pRecord = 1 + (numberOfAttributes + 1) * sizeof(unsigned short);
         for (unsigned indexOfAttribute = 0; indexOfAttribute < numberOfAttributes; indexOfAttribute++) {
             const Attribute &attr = recordDescriptor[indexOfAttribute];
             unsigned indexOfBitmap = indexOfAttribute / 8;
             unsigned offsetOfBitmap = indexOfAttribute % 8;
             if (bitmaps[indexOfBitmap] >> (7 - offsetOfBitmap) & (unsigned) 1) {
-                std::memset((char *) fileHandle.recordBuffer + (indexOfAttribute + 1) * sizeof(unsigned short), 0, sizeof(unsigned short));
+                std::memset((char *) fileHandle.recordBuffer + 1 + (indexOfAttribute + 1) * sizeof(unsigned short), 0, sizeof(unsigned short));
                 continue;
             }
             if (attr.type == 0) {
@@ -151,7 +153,7 @@ namespace PeterDB {
                 pRecord = pRecord + length;
                 pData = pData + length;
             }
-            std::memcpy((char *) fileHandle.recordBuffer + (indexOfAttribute + 1) * sizeof(unsigned short), &pRecord, sizeof(unsigned short));
+            std::memcpy((char *) fileHandle.recordBuffer + 1 + (indexOfAttribute + 1) * sizeof(unsigned short), &pRecord, sizeof(unsigned short));
         }
 
         return 0;
@@ -186,13 +188,18 @@ namespace PeterDB {
     }
 
     RC RecordBasedFileManager::getRecordBuffer(FileHandle &fileHandle, const RID &rid) {
-        toPageBuffer(fileHandle, rid.pageNum);
+        getPageBuffer(fileHandle, rid.pageNum);
         std::vector<Slot> slotDirectory = getSlotDirectory(fileHandle);
         const Slot &slot = slotDirectory[rid.slotNum];
         if (slot.offset == -1) return -1;
         fileHandle.recordLength = slot.length;
         std::memcpy(fileHandle.recordBuffer, (char *) fileHandle.pageBuffer + slot.offset, fileHandle.recordLength);
-        return 0;
+        unsigned char c = 0;
+        if (std::memcmp(fileHandle.recordBuffer, &c, 1) == 0) return 0;
+        RID recordID;
+        std::memcmp(&recordID.pageNum, (char *) fileHandle.recordBuffer + 1, sizeof(unsigned));
+        std::memcmp(&recordID.slotNum, (char *) fileHandle.recordBuffer + 1 + sizeof(unsigned), sizeof(unsigned short));
+        return getRecordBuffer(fileHandle, recordID);
     }
 
     RC RecordBasedFileManager::toData(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, void *data) {
@@ -203,14 +210,14 @@ namespace PeterDB {
 
         unsigned short offset;
         unsigned short pData = numberOfNullBytes;
-        unsigned short pRecord = (numberOfAttributes + 1) * sizeof(unsigned short);
+        unsigned short pRecord = 1 + (numberOfAttributes + 1) * sizeof(unsigned short);
         unsigned short prev = pRecord;
         int length;
         for (unsigned indexOfAttribute = 0; indexOfAttribute < numberOfAttributes; indexOfAttribute++) {
             const Attribute &attr = recordDescriptor[indexOfAttribute];
             unsigned indexOfBitmap = indexOfAttribute / 8;
             unsigned offsetOfBitmap = indexOfAttribute % 8;
-            std::memcpy(&offset, (unsigned short *) fileHandle.recordBuffer + 1 + indexOfAttribute, sizeof(unsigned short));
+            std::memcpy(&offset, (char *) fileHandle.recordBuffer + 1 + (1 + indexOfAttribute) * sizeof(unsigned short), sizeof(unsigned short));
             if (offset == 0) {
                 bitmaps[indexOfBitmap] |= (unsigned) 1 << (7 - offsetOfBitmap);
                 continue;
