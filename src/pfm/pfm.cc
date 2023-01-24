@@ -57,7 +57,6 @@ namespace PeterDB {
             fileHandle.recordBuffer = malloc(RECORD_SIZE);
             memset(fileHandle.pageBuffer, 0, PAGE_SIZE);
             memset(fileHandle.recordBuffer, 0, RECORD_SIZE);
-            fileHandle.curPageNum = -1;
             return 0;
         } else return -1;
     }

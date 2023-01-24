@@ -33,12 +33,10 @@ namespace PeterDB {
     }
 
     RC RecordBasedFileManager::toPageBuffer(FileHandle &fileHandle, unsigned pageNum) {
-        fileHandle.curPageNum = pageNum;
         return fileHandle.readPage(pageNum, fileHandle.pageBuffer);
     }
 
     RC RecordBasedFileManager::appendEmptyPage(FileHandle &fileHandle) {
-        fileHandle.curPageNum = fileHandle.getNumberOfPages();
         memset(fileHandle.pageBuffer, 0, PAGE_SIZE);
         RC rc = fileHandle.appendPage(fileHandle.pageBuffer);
         return rc;
@@ -85,8 +83,7 @@ namespace PeterDB {
         return freeSpace;
     }
 
-    bool RecordBasedFileManager::isCurrentPageFree(FileHandle &fileHandle) {
-        if (fileHandle.curPageNum == -1) return false;
+    bool RecordBasedFileManager::isLastPageFree(FileHandle &fileHandle) {
         unsigned short freeSpace = getFreeSpace(fileHandle);
         if (fileHandle.recordLength > freeSpace) return false;
         std::vector<Slot> slotDirectory = getSlotDirectory(fileHandle);
@@ -97,16 +94,11 @@ namespace PeterDB {
 
     unsigned RecordBasedFileManager::findFreePage(FileHandle &fileHandle) {
         unsigned numberOfPages = fileHandle.getNumberOfPages();
-        for (unsigned pageNum = 0; pageNum < numberOfPages; pageNum++) {
-            toPageBuffer(fileHandle, pageNum);
-            unsigned short freeSpace = getFreeSpace(fileHandle);
-            if (fileHandle.recordLength > freeSpace) continue;
-            std::vector<Slot> slotDirectory = getSlotDirectory(fileHandle);
-            bool hasFreeSlot = getFreeSlotNum(slotDirectory) != slotDirectory.size();
-            if (hasFreeSlot || fileHandle.recordLength + sizeof(Slot) <= freeSpace) return pageNum;
+        if (numberOfPages == 0 || !isLastPageFree(fileHandle)) {
+            appendEmptyPage(fileHandle);
+            return numberOfPages;
         }
-        appendEmptyPage(fileHandle);
-        return numberOfPages;
+        return numberOfPages - 1;
     }
 
     RC RecordBasedFileManager::toRecordBuffer(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const void *data) {
@@ -160,7 +152,7 @@ namespace PeterDB {
                                             const void *data, RID &rid) {
         if (toRecordBuffer(fileHandle, recordDescriptor, data) != 0) return -1;
 
-        rid.pageNum = isCurrentPageFree(fileHandle) ? fileHandle.curPageNum : findFreePage(fileHandle);
+        rid.pageNum = findFreePage(fileHandle);
         unsigned short startOfFreeSpace = getStartOfFreeSpace(fileHandle);
         std::vector<Slot> slotDirectory = getSlotDirectory(fileHandle);
         rid.slotNum = getFreeSlotNum(slotDirectory);

@@ -100,7 +100,7 @@ namespace PeterDB {
 
         unsigned short getFreeSlotNum(const std::vector<Slot> &slotDirectory);       // Get the number of free slot in the slot directory
 
-        bool isCurrentPageFree(FileHandle &fileHandle);
+        bool isLastPageFree(FileHandle &fileHandle);
 
         unsigned findFreePage(FileHandle &fileHandle);                      // Find a free page for a record buffer data to store
 
