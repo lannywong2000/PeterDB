@@ -22,9 +22,9 @@ namespace PeterDB {
     }
 
     RC PagedFileManager::createFile(const std::string &fileName) {
-        if (exists(fileName)) return -1;
+        if (exists(fileName)) return ERR_FILE_NAME_EXISTS;
         FILE *pFile = fopen(fileName.c_str(), "w+b");
-        if (pFile == nullptr) return -1;
+        if (pFile == nullptr) return ERR_FILE_CREATE_FAILED;
         void *pageBuffer = malloc(PAGE_SIZE);
         memset(pageBuffer, 0, PAGE_SIZE);
         unsigned buffer[4] = {0};
@@ -32,19 +32,19 @@ namespace PeterDB {
         fwrite(pageBuffer, sizeof(char), PAGE_SIZE, pFile);
         free(pageBuffer);
         fclose(pFile);
-        return 0;
+        return RC(0);
     }
 
     RC PagedFileManager::destroyFile(const std::string &fileName) {
-        if (!exists(fileName)) return -1;
-        if (remove(fileName.c_str()) != 0) return -1;
-        else return 0;
+        if (!exists(fileName)) return ERR_FILE_NOT_EXISTS;
+        if (remove(fileName.c_str()) != 0) return ERR_FILE_DELETE_FAILED;
+        else return RC(0);
     }
 
     RC PagedFileManager::openFile(const std::string &fileName, FileHandle &fileHandle) {
-        if (fileHandle.pFile != nullptr) return -1;
+        if (fileHandle.pFile != nullptr) return ERR_FILE_HANDLE_REUSE;
         FILE *pFile = fopen(fileName.c_str(), "r+b");
-        if (pFile == nullptr) return -1;
+        if (pFile == nullptr) return ERR_FILE_OPEN_FAILED;
         fseek(pFile, 0, SEEK_SET);
         unsigned buffer[4];
         if (fread(buffer, sizeof(unsigned), 4, pFile) == 4) {
@@ -58,8 +58,8 @@ namespace PeterDB {
             memset(fileHandle.pageBuffer, 0, PAGE_SIZE);
             memset(fileHandle.recordBuffer, 0, RECORD_SIZE);
             fileHandle.curPageNum = -1;
-            return 0;
-        } else return -1;
+            return RC(0);
+        } else return ERR_FILE_WRONG_FORMAT;
     }
 
     RC PagedFileManager::closeFile(FileHandle &fileHandle) {
@@ -76,7 +76,7 @@ namespace PeterDB {
     FileHandle::~FileHandle() = default;
 
     RC FileHandle::closeFile() {
-        if (pFile == nullptr) return 0;
+        if (pFile == nullptr) return RC(0);
         fseek(pFile, 0, SEEK_SET);
         unsigned buffer[4] = {numberOfPages, readPageCounter, writePageCounter, appendPageCounter};
         fwrite(buffer, sizeof(unsigned), 4, pFile);
@@ -84,23 +84,24 @@ namespace PeterDB {
         free(pageBuffer);
         free(recordBuffer);
 
-        return fclose(pFile);
+        if (fclose(pFile) != 0) return ERR_FILE_CLOSE_FAILED;
+        return RC(0);
     }
 
     RC FileHandle::readPage(PageNum pageNum, void *data) {
-        if (pageNum >= numberOfPages) return -1;
+        if (pageNum >= numberOfPages) return ERR_PAGE_READ_EXCEED;
         fseek(pFile, PAGE_SIZE * (pageNum + 1), SEEK_SET);
         fread(data, sizeof(char), PAGE_SIZE, pFile);
         readPageCounter = readPageCounter + 1;
-        return 0;
+        return RC(0);
     }
 
     RC FileHandle::writePage(PageNum pageNum, const void *data) {
-        if (pageNum >= numberOfPages) return -1;
+        if (pageNum >= numberOfPages) return ERR_PAGE_WRITE_EXCEED;
         fseek(pFile, PAGE_SIZE * (pageNum + 1), SEEK_SET);
         fwrite(data, sizeof(char), PAGE_SIZE, pFile);
         writePageCounter = writePageCounter + 1;
-        return 0;
+        return RC(0);
     }
 
     RC FileHandle::appendPage(const void *data) {
@@ -108,7 +109,7 @@ namespace PeterDB {
         fwrite(data, sizeof(char), PAGE_SIZE, pFile);
         numberOfPages = numberOfPages + 1;
         appendPageCounter = appendPageCounter + 1;
-        return 0;
+        return RC(0);
     }
 
     unsigned FileHandle::getNumberOfPages() {
@@ -119,7 +120,7 @@ namespace PeterDB {
         readPageCount = readPageCounter;
         writePageCount = writePageCounter;
         appendPageCount = appendPageCounter;
-        return 0;
+        return RC(0);
     }
 
 } // namespace PeterDB

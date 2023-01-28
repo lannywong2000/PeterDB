@@ -7,10 +7,11 @@
 #include <string>
 #include <cstring>
 
+#include "rc.h"
+
 namespace PeterDB {
 
     typedef unsigned PageNum;
-    typedef int RC;
 
     class FileHandle;
 

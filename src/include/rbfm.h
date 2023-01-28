@@ -49,8 +49,6 @@ namespace PeterDB {
     * The scan iterator is NOT required to be implemented for Project 1 *
     ********************************************************************/
 
-# define RBFM_EOF (-1)  // end of a scan operator
-
     //  RBFM_ScanIterator is an iterator to go through records
     //  The way to use it is like the following:
     //  RBFM_ScanIterator rbfmScanIterator;
@@ -71,7 +69,7 @@ namespace PeterDB {
         // "data" follows the same format as RecordBasedFileManager::insertRecord().
         RC getNextRecord(RID &rid, void *data) { return RBFM_EOF; };
 
-        RC close() { return -1; };
+        RC close() { return RC(-1); };
     };
 
     class RecordBasedFileManager {
@@ -96,9 +94,9 @@ namespace PeterDB {
 
         unsigned short getNumberOfSlot(FileHandle &fileHandle);                                   // Get the number of slot in page pageNum
 
-        std::vector<Slot> getSlotDirectory(FileHandle &fileHandle);              // Get the slot directory
+        unsigned short getFreeSlotNum(FileHandle &fileHandle);       // Get the number of free slot in the slot directory
 
-        unsigned short getFreeSlotNum(const std::vector<Slot> &slotDirectory);       // Get the number of free slot in the slot directory
+        RC getSlot(FileHandle &fileHandle, Slot &slot, unsigned short slotNum);        // Get the Slot slotNum of the current page
 
         bool isCurrentPageFree(FileHandle &fileHandle);
 

@@ -40,8 +40,7 @@ namespace PeterDB {
     RC RecordBasedFileManager::appendEmptyPage(FileHandle &fileHandle) {
         fileHandle.curPageNum = fileHandle.getNumberOfPages();
         std::memset(fileHandle.pageBuffer, 0, PAGE_SIZE);
-        RC rc = fileHandle.appendPage(fileHandle.pageBuffer);
-        return rc;
+        return fileHandle.appendPage(fileHandle.pageBuffer);
     }
 
     unsigned short RecordBasedFileManager::getNumberOfSlot(FileHandle &fileHandle) {
@@ -50,26 +49,23 @@ namespace PeterDB {
         return numberOfSlot;
     }
 
-    std::vector<Slot> RecordBasedFileManager::getSlotDirectory(FileHandle &fileHandle) {
-        std::vector<Slot> slotDirectory;
+    unsigned short RecordBasedFileManager::getFreeSlotNum(FileHandle &fileHandle) {
         unsigned short numberOfSlot = getNumberOfSlot(fileHandle);
-        if (numberOfSlot == 0) return slotDirectory;
         Slot slot;
         char * pSlot = (char *) fileHandle.pageBuffer + PAGE_SIZE - 2 * sizeof(unsigned short) - sizeof(Slot);
         for (unsigned short i = 0; i < numberOfSlot; i++) {
             std::memcpy(&slot, pSlot, sizeof(Slot));
-            slotDirectory.push_back(slot);
+            if (slot.offset == -1) return i;
             pSlot = pSlot - sizeof(Slot);
         }
-        return slotDirectory;
+        return numberOfSlot;
     }
 
-    unsigned short RecordBasedFileManager::getFreeSlotNum(const std::vector<Slot> &slotDirectory) {
-        unsigned short numberOfSlot = slotDirectory.size();
-        for (unsigned short i = 0; i < numberOfSlot; i++) {
-            if (slotDirectory[i].offset == -1) return i;
-        }
-        return numberOfSlot;
+    RC RecordBasedFileManager::getSlot(FileHandle &fileHandle, Slot &slot, unsigned short slotNum) {
+        if (fileHandle.curPageNum == -1) return ERR_PAGE_BUFFER_INVALID;
+        if (slotNum >= getNumberOfSlot(fileHandle)) return ERR_SLOT_READ_EXCEED;
+        std::memcpy(&slot, (char *) fileHandle.pageBuffer + PAGE_SIZE - 2 * sizeof(unsigned short) - (slotNum + 1) * sizeof(Slot), sizeof(Slot));
+        return RC(0);
     }
 
     unsigned short RecordBasedFileManager::getStartOfFreeSpace(FileHandle &fileHandle) {
@@ -89,8 +85,7 @@ namespace PeterDB {
         if (fileHandle.curPageNum == -1) return false;
         unsigned short freeSpace = getFreeSpace(fileHandle);
         if (fileHandle.recordLength > freeSpace) return false;
-        std::vector<Slot> slotDirectory = getSlotDirectory(fileHandle);
-        bool hasFreeSlot = getFreeSlotNum(slotDirectory) != slotDirectory.size();
+        bool hasFreeSlot = getFreeSlotNum(fileHandle) != getNumberOfSlot(fileHandle);
         if (hasFreeSlot || fileHandle.recordLength + sizeof(Slot) <= freeSpace) return true;
         return false;
     }
@@ -102,8 +97,7 @@ namespace PeterDB {
             getPageBuffer(fileHandle, pageNum);
             unsigned short freeSpace = getFreeSpace(fileHandle);
             if (fileHandle.recordLength > freeSpace) continue;
-            std::vector<Slot> slotDirectory = getSlotDirectory(fileHandle);
-            bool hasFreeSlot = getFreeSlotNum(slotDirectory) != slotDirectory.size();
+            bool hasFreeSlot = getFreeSlotNum(fileHandle) != getNumberOfSlot(fileHandle);
             if (hasFreeSlot || fileHandle.recordLength + sizeof(Slot) <= freeSpace) return pageNum;
         }
         appendEmptyPage(fileHandle);
@@ -111,7 +105,7 @@ namespace PeterDB {
     }
 
     RC RecordBasedFileManager::toRecordBuffer(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const void *data) {
-        if (recordDescriptor.empty()) return -1;
+        if (recordDescriptor.empty()) return ERR_RECORD_DESCRIPTOR_EMPTY;
 
         std::memset(fileHandle.recordBuffer, 0, 1);
 
@@ -156,17 +150,16 @@ namespace PeterDB {
             std::memcpy((char *) fileHandle.recordBuffer + 1 + (indexOfAttribute + 1) * sizeof(unsigned short), &pRecord, sizeof(unsigned short));
         }
 
-        return 0;
+        return RC(0);
     }
 
     RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const void *data, RID &rid) {
-        if (toRecordBuffer(fileHandle, recordDescriptor, data) != 0) return -1;
+        if (toRecordBuffer(fileHandle, recordDescriptor, data) != 0) return ERR_RECORD_FROM_DATA_FAILED;
 
         rid.pageNum = findFreePage(fileHandle);
         unsigned short startOfFreeSpace = getStartOfFreeSpace(fileHandle);
-        std::vector<Slot> slotDirectory = getSlotDirectory(fileHandle);
-        rid.slotNum = getFreeSlotNum(slotDirectory);
+        rid.slotNum = getFreeSlotNum(fileHandle);
 
         Slot slot;
         slot.offset = (short) startOfFreeSpace;
@@ -175,27 +168,26 @@ namespace PeterDB {
         std::memcpy((char *) fileHandle.pageBuffer + startOfFreeSpace, fileHandle.recordBuffer, fileHandle.recordLength);
         std::memcpy((char *) fileHandle.pageBuffer + PAGE_SIZE - 2 * sizeof(unsigned short) - (rid.slotNum + 1) * sizeof(Slot), &slot, sizeof(Slot));
 
-        if (rid.slotNum == slotDirectory.size()) {
+        if (rid.slotNum == getNumberOfSlot(fileHandle)) {
             unsigned short newSlotNum = rid.slotNum + 1;
             std::memcpy((char *) fileHandle.pageBuffer + PAGE_SIZE - 2 * sizeof(unsigned short), &newSlotNum, sizeof(unsigned short));
         }
         startOfFreeSpace = startOfFreeSpace + fileHandle.recordLength;
         std::memcpy((char *) fileHandle.pageBuffer + PAGE_SIZE - sizeof(unsigned short), &startOfFreeSpace, sizeof(unsigned short));
 
-        RC rc = fileHandle.writePage(rid.pageNum, fileHandle.pageBuffer);
-
-        return rc;
+        return fileHandle.writePage(rid.pageNum, fileHandle.pageBuffer);
     }
 
     RC RecordBasedFileManager::getRecordBuffer(FileHandle &fileHandle, const RID &rid) {
         getPageBuffer(fileHandle, rid.pageNum);
-        std::vector<Slot> slotDirectory = getSlotDirectory(fileHandle);
-        const Slot &slot = slotDirectory[rid.slotNum];
-        if (slot.offset == -1) return -1;
+        Slot slot;
+        RC rc = getSlot(fileHandle, slot, rid.slotNum);
+        if (rc != 0) return rc;
+        if (slot.offset == -1) return ERR_RECORD_DUPLICATE_DELETE;
         fileHandle.recordLength = slot.length;
         std::memcpy(fileHandle.recordBuffer, (char *) fileHandle.pageBuffer + slot.offset, fileHandle.recordLength);
         unsigned char c = 0;
-        if (std::memcmp(fileHandle.recordBuffer, &c, 1) == 0) return 0;
+        if (std::memcmp(fileHandle.recordBuffer, &c, 1) == 0) return RC(0);
         RID recordID;
         std::memcmp(&recordID.pageNum, (char *) fileHandle.recordBuffer + 1, sizeof(unsigned));
         std::memcmp(&recordID.slotNum, (char *) fileHandle.recordBuffer + 1 + sizeof(unsigned), sizeof(unsigned short));
@@ -243,20 +235,20 @@ namespace PeterDB {
 
         std::memcpy((char *) data, bitmaps, numberOfNullBytes);
 
-        return 0;
+        return RC(0);
     }
 
     RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                           const RID &rid, void *data) {
-        getRecordBuffer(fileHandle, rid);
-        toData(fileHandle, recordDescriptor, data);
+        RC rc = getRecordBuffer(fileHandle, rid);
+        if (rc == 0) toData(fileHandle, recordDescriptor, data);
 
-        return 0;
+        return rc;
     }
 
     RC RecordBasedFileManager::printRecord(const std::vector<Attribute> &recordDescriptor, const void *data,
                                            std::ostream &out) {
-        if (recordDescriptor.empty()) return 0;
+        if (recordDescriptor.empty()) return ERR_RECORD_DESCRIPTOR_EMPTY;
         unsigned numberOfAttributes = recordDescriptor.size();
         unsigned numberOfNullBytes = numberOfAttributes % 8 == 0 ? numberOfAttributes / 8 : numberOfAttributes / 8 + 1;
         char bitmaps[numberOfNullBytes];
@@ -287,31 +279,31 @@ namespace PeterDB {
                 std::memcpy(stringVal, (char *) data + pData, length);
                 for (int i = 0; i < length; i++) out << stringVal[i];
                 pData = pData + length;
-            } else return -1;
+            } else return ERR_ATTRIBUTE_TYPE_UNDEFINED;
         }
-        return 0;
+        return RC(0);
     }
 
     RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const RID &rid) {
-        return -1;
+        return RC(-1);
     }
 
     RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const void *data, const RID &rid) {
-        return -1;
+        return RC(-1);
     }
 
     RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                              const RID &rid, const std::string &attributeName, void *data) {
-        return -1;
+        return RC(-1);
     }
 
     RC RecordBasedFileManager::scan(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                     const std::string &conditionAttribute, const CompOp compOp, const void *value,
                                     const std::vector<std::string> &attributeNames,
                                     RBFM_ScanIterator &rbfm_ScanIterator) {
-        return -1;
+        return RC(-1);
     }
 
 } // namespace PeterDB
