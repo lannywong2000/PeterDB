@@ -315,9 +315,11 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const RID &rid) {
-        assert(getPageBuffer(fileHandle, rid.pageNum) == 0);
+        RC rc = getPageBuffer(fileHandle, rid.pageNum);
+        if (rc != 0) return rc;
         Slot slot;
-        assert(getSlot(fileHandle, slot, rid.slotNum) == 0);
+        rc = getSlot(fileHandle, slot, rid.slotNum);
+        if (rc != 0) return rc;
         if (slot.offset == -1) return ERR_RECORD_DUPLICATE_DELETE;
         fileHandle.recordLength = slot.length;
         std::memcpy(fileHandle.recordBuffer, (char *) fileHandle.pageBuffer + slot.offset, fileHandle.recordLength);
@@ -325,7 +327,8 @@ namespace PeterDB {
         slot.offset = -1;
         std::memcpy((char *) fileHandle.pageBuffer + PAGE_SIZE - 2 * sizeof(unsigned short) - (rid.slotNum + 1) * sizeof(Slot), &slot, sizeof(Slot));
         if (rid.slotNum == getNumberOfSlot(fileHandle) - 1) std::memcpy((char *) fileHandle.pageBuffer + PAGE_SIZE - 2 * sizeof(unsigned short), &rid.slotNum, sizeof(unsigned short));
-        assert(fileHandle.writePage(rid.pageNum, fileHandle.pageBuffer) == 0);
+        rc = fileHandle.writePage(rid.pageNum, fileHandle.pageBuffer);
+        if (rc != 0) return rc;
         unsigned char c = 0;
         if (std::memcmp(fileHandle.recordBuffer, &c, 1) == 0) return RC(0);
         RID recordID;
@@ -336,10 +339,12 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const void *data, const RID &rid) {
-        assert(toRecordBuffer(fileHandle, recordDescriptor, data) == 0);
-        assert(getPageBuffer(fileHandle, rid.pageNum) == 0);
+        RC rc = toRecordBuffer(fileHandle, recordDescriptor, data);
+        if (rc != 0) return rc;
+        rc = getPageBuffer(fileHandle, rid.pageNum);
+        if (rc != 0) return rc;
         Slot slot;
-        RC rc = getSlot(fileHandle, slot, rid.slotNum);
+        rc = getSlot(fileHandle, slot, rid.slotNum);
         if (rc != 0) return rc;
         unsigned freeSpace = getFreeSpace(fileHandle);
 
@@ -363,7 +368,8 @@ namespace PeterDB {
             RID recordID;
             rc = insertRecord(fileHandle, recordDescriptor, data, recordID);
             if (rc != 0) return rc;
-            assert(getPageBuffer(fileHandle, rid.pageNum) == 0);
+            rc = getPageBuffer(fileHandle, rid.pageNum);
+            if (rc != 0) return rc;
             unsigned char c = 1;
             std::memcpy((char *) fileHandle.pageBuffer + slot.offset, &c, sizeof(unsigned char));
             std::memcpy((char *) fileHandle.pageBuffer + slot.offset + sizeof(unsigned char), &recordID.pageNum, sizeof(unsigned));
