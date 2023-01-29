@@ -7,7 +7,6 @@
 #include "src/include/rbfm.h"
 
 namespace PeterDB {
-#define RM_EOF (-1)  // end of a scan operator
 
     // RM_ScanIterator is an iterator to go through tuples
     class RM_ScanIterator {

@@ -31,7 +31,9 @@ namespace PeterDB {
 
         ERR_ATTRIBUTE_TYPE_UNDEFINED,
 
-        RBFM_EOF // end of a scan operator
+        RBFM_EOF, // end of a scan operator
+
+        RM_EOF // end of a scan operator
 
     } RC;
 
