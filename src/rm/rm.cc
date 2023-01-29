@@ -15,48 +15,48 @@ namespace PeterDB {
     RelationManager &RelationManager::operator=(const RelationManager &) = default;
 
     RC RelationManager::createCatalog() {
-        return RC(-1);
+        return -1;
     }
 
     RC RelationManager::deleteCatalog() {
-        return RC(-1);
+        return -1;
     }
 
     RC RelationManager::createTable(const std::string &tableName, const std::vector<Attribute> &attrs) {
-        return RC(-1);
+        return -1;
     }
 
     RC RelationManager::deleteTable(const std::string &tableName) {
-        return RC(-1);
+        return -1;
     }
 
     RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attribute> &attrs) {
-        return RC(-1);
+        return -1;
     }
 
     RC RelationManager::insertTuple(const std::string &tableName, const void *data, RID &rid) {
-        return RC(-1);
+        return -1;
     }
 
     RC RelationManager::deleteTuple(const std::string &tableName, const RID &rid) {
-        return RC(-1);
+        return -1;
     }
 
     RC RelationManager::updateTuple(const std::string &tableName, const void *data, const RID &rid) {
-        return RC(-1);
+        return -1;
     }
 
     RC RelationManager::readTuple(const std::string &tableName, const RID &rid, void *data) {
-        return RC(-1);
+        return -1;
     }
 
     RC RelationManager::printTuple(const std::vector<Attribute> &attrs, const void *data, std::ostream &out) {
-        return RC(-1);
+        return -1;
     }
 
     RC RelationManager::readAttribute(const std::string &tableName, const RID &rid, const std::string &attributeName,
                                       void *data) {
-        return RC(-1);
+        return -1;
     }
 
     RC RelationManager::scan(const std::string &tableName,
@@ -65,7 +65,7 @@ namespace PeterDB {
                              const void *value,
                              const std::vector<std::string> &attributeNames,
                              RM_ScanIterator &rm_ScanIterator) {
-        return RC(-1);
+        return -1;
     }
 
     RM_ScanIterator::RM_ScanIterator() = default;
@@ -74,25 +74,25 @@ namespace PeterDB {
 
     RC RM_ScanIterator::getNextTuple(RID &rid, void *data) { return RM_EOF; }
 
-    RC RM_ScanIterator::close() { return RC(-1); }
+    RC RM_ScanIterator::close() { return -1; }
 
     // Extra credit work
     RC RelationManager::dropAttribute(const std::string &tableName, const std::string &attributeName) {
-        return RC(-1);
+        return -1;
     }
 
     // Extra credit work
     RC RelationManager::addAttribute(const std::string &tableName, const Attribute &attr) {
-        return RC(-1);
+        return -1;
     }
 
     // QE IX related
     RC RelationManager::createIndex(const std::string &tableName, const std::string &attributeName){
-        return RC(-1);
+        return -1;
     }
 
     RC RelationManager::destroyIndex(const std::string &tableName, const std::string &attributeName){
-        return RC(-1);
+        return -1;
     }
 
     // indexScan returns an iterator to allow the caller to go through qualified entries in index
@@ -103,7 +103,7 @@ namespace PeterDB {
                  bool lowKeyInclusive,
                  bool highKeyInclusive,
                  RM_IndexScanIterator &rm_IndexScanIterator){
-        return RC(-1);
+        return -1;
     }
 
 
@@ -112,11 +112,11 @@ namespace PeterDB {
     RM_IndexScanIterator::~RM_IndexScanIterator() = default;
 
     RC RM_IndexScanIterator::getNextEntry(RID &rid, void *key){
-        return RC(-1);
+        return -1;
     }
 
     RC RM_IndexScanIterator::close(){
-        return RC(-1);
+        return -1;
     }
 
 } // namespace PeterDB

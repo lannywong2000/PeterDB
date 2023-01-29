@@ -8,6 +8,9 @@
 #include "pfm.h"
 
 namespace PeterDB {
+
+#define RBFM_EOF (-1)
+
     //Slot Directory
     typedef struct {
         short offset;      // offset of the record in the page
@@ -69,7 +72,7 @@ namespace PeterDB {
         // "data" follows the same format as RecordBasedFileManager::insertRecord().
         RC getNextRecord(RID &rid, void *data) { return RBFM_EOF; };
 
-        RC close() { return RC(-1); };
+        RC close() { return -1; };
     };
 
     class RecordBasedFileManager {

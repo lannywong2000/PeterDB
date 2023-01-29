@@ -32,13 +32,13 @@ namespace PeterDB {
         fwrite(pageBuffer, sizeof(char), PAGE_SIZE, pFile);
         free(pageBuffer);
         fclose(pFile);
-        return RC(0);
+        return 0;
     }
 
     RC PagedFileManager::destroyFile(const std::string &fileName) {
         if (!exists(fileName)) return ERR_FILE_NOT_EXISTS;
         if (remove(fileName.c_str()) != 0) return ERR_FILE_DELETE_FAILED;
-        else return RC(0);
+        else return 0;
     }
 
     RC PagedFileManager::openFile(const std::string &fileName, FileHandle &fileHandle) {
@@ -58,7 +58,7 @@ namespace PeterDB {
             memset(fileHandle.pageBuffer, 0, PAGE_SIZE);
             memset(fileHandle.recordBuffer, 0, RECORD_SIZE);
             fileHandle.curPageNum = -1;
-            return RC(0);
+            return 0;
         } else return ERR_FILE_WRONG_FORMAT;
     }
 
@@ -76,7 +76,7 @@ namespace PeterDB {
     FileHandle::~FileHandle() = default;
 
     RC FileHandle::closeFile() {
-        if (pFile == nullptr) return RC(0);
+        if (pFile == nullptr) return 0;
         fseek(pFile, 0, SEEK_SET);
         unsigned buffer[4] = {numberOfPages, readPageCounter, writePageCounter, appendPageCounter};
         fwrite(buffer, sizeof(unsigned), 4, pFile);
@@ -85,7 +85,7 @@ namespace PeterDB {
         free(recordBuffer);
 
         if (fclose(pFile) != 0) return ERR_FILE_CLOSE_FAILED;
-        return RC(0);
+        return 0;
     }
 
     RC FileHandle::readPage(PageNum pageNum, void *data) {
@@ -93,7 +93,7 @@ namespace PeterDB {
         fseek(pFile, PAGE_SIZE * (pageNum + 1), SEEK_SET);
         fread(data, sizeof(char), PAGE_SIZE, pFile);
         readPageCounter = readPageCounter + 1;
-        return RC(0);
+        return 0;
     }
 
     RC FileHandle::writePage(PageNum pageNum, const void *data) {
@@ -101,7 +101,7 @@ namespace PeterDB {
         fseek(pFile, PAGE_SIZE * (pageNum + 1), SEEK_SET);
         fwrite(data, sizeof(char), PAGE_SIZE, pFile);
         writePageCounter = writePageCounter + 1;
-        return RC(0);
+        return 0;
     }
 
     RC FileHandle::appendPage(const void *data) {
@@ -109,7 +109,7 @@ namespace PeterDB {
         fwrite(data, sizeof(char), PAGE_SIZE, pFile);
         numberOfPages = numberOfPages + 1;
         appendPageCounter = appendPageCounter + 1;
-        return RC(0);
+        return 0;
     }
 
     unsigned FileHandle::getNumberOfPages() {
@@ -120,7 +120,7 @@ namespace PeterDB {
         readPageCount = readPageCounter;
         writePageCount = writePageCounter;
         appendPageCount = appendPageCounter;
-        return RC(0);
+        return 0;
     }
 
 } // namespace PeterDB

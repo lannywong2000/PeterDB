@@ -8,6 +8,8 @@
 
 namespace PeterDB {
 
+#define RM_EOF (-1)
+
     // RM_ScanIterator is an iterator to go through tuples
     class RM_ScanIterator {
     public:
