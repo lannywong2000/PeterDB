@@ -88,7 +88,7 @@ namespace PeterDB {
 
         RC appendEmptyPage(FileHandle &fileHandle);                         // Append a structured empty page to the end of the paged file
 
-        unsigned short getFreeSpace(FileHandle &fileHandle);
+        unsigned short getFreeSpace(FileHandle &fileHandle);                // Get the free space of current page
 
         unsigned short getStartOfFreeSpace(FileHandle &fileHandle);                               // Get the offset to the free space
 
@@ -97,6 +97,8 @@ namespace PeterDB {
         unsigned short getFreeSlotNum(FileHandle &fileHandle);       // Get the number of free slot in the slot directory
 
         RC getSlot(FileHandle &fileHandle, Slot &slot, unsigned short slotNum);        // Get the Slot slotNum of the current page
+
+        RC writeSlot(FileHandle &fileHandle, Slot &slotBuffer, unsigned short slotNum);       // Write thr slot buffer to the slotNum slot of page buffer
 
         bool isCurrentPageFree(FileHandle &fileHandle);
 
@@ -143,6 +145,8 @@ namespace PeterDB {
         * IMPORTANT, PLEASE READ: All methods below this comment (other than the constructor and destructor) *
         * are NOT required to be implemented for Project 1                                                   *
         *****************************************************************************************************/
+        RC shiftLeft(FileHandle &fileHandle, unsigned short offset, unsigned short length);
+
         // Delete a record identified by the given rid.
         RC deleteRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const RID &rid);
 
