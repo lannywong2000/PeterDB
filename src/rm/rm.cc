@@ -8,7 +8,7 @@ namespace PeterDB {
 
     RelationManager::RelationManager() {
         tableIdBuffer = new char[5];
-        attributesBuffer = new char[67];
+        attributesBuffer = new char[70];
     }
 
     RelationManager::~RelationManager() {
