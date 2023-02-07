@@ -139,7 +139,7 @@ namespace PeterDB {
         std::vector<std::string> attributeNames = {"table-id"};
         scan(tablesName, "table-name", NO_OP, nullptr, attributeNames, rm_ScanIterator);
         RID rid;
-        int tableId = INT_MIN, nextTableId;
+        int tableId = -1, nextTableId;
         while (rm_ScanIterator.getNextTuple(rid, tableIdBuffer) != RM_EOF) {
             std::memcpy(&nextTableId, tableIdBuffer + 1, sizeof(int));
             tableId = nextTableId > tableId ? nextTableId : tableId;
