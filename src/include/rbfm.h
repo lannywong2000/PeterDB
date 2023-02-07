@@ -1,6 +1,7 @@
 #ifndef _rbfm_h_
 #define _rbfm_h_
 
+#include <utility>
 #include <vector>
 #include <ostream>
 #include <cstring>
@@ -12,15 +13,21 @@ namespace PeterDB {
 #define RBFM_EOF (-1)
 
     //Slot Directory
-    typedef struct {
+    typedef struct Slot {
         short offset;      // offset of the record in the page
         unsigned short length;      // record length in bytes
+
+        Slot() {};
+        Slot(short offset, unsigned short length): offset(offset), length(length) {};
     } Slot;
 
     // Record ID
-    typedef struct {
+    typedef struct RID{
         unsigned pageNum;           // page number
         unsigned short slotNum;     // slot number in the page
+
+        RID() {};
+        RID(unsigned pageNum, unsigned short slotNum): pageNum(pageNum), slotNum(slotNum) {};
     } RID;
 
     // Attribute
@@ -34,11 +41,14 @@ namespace PeterDB {
         std::string name;  // attribute name
         AttrType type;     // attribute type
         AttrLength length; // attribute length
+
+        Attribute() {};
+        Attribute(std::string name, AttrType type, AttrLength length): name(std::move(name)), type(type), length(length) {};
     } Attribute;
 
     // Comparison Operator (NOT needed for part 1 of the project)
     typedef enum {
-        EQ_OP = 0, // no condition// =
+        EQ_OP = 0,  // =
         LT_OP,      // <
         LE_OP,      // <=
         GT_OP,      // >
@@ -63,16 +73,26 @@ namespace PeterDB {
 
     class RBFM_ScanIterator {
     public:
-        RBFM_ScanIterator() = default;;
+        RBFM_ScanIterator() = default;
 
-        ~RBFM_ScanIterator() = default;;
+        ~RBFM_ScanIterator() = default;
+
+        FileHandle fileHandle;
+
+        std::vector<RID> rids;
+
+        int pos;
+
+        std::vector<Attribute> recordDescriptor;
+
+        std::vector<std::string> attributeNames;
 
         // Never keep the results in the memory. When getNextRecord() is called,
         // a satisfying record needs to be fetched from the file.
         // "data" follows the same format as RecordBasedFileManager::insertRecord().
-        RC getNextRecord(RID &rid, void *data) { return RBFM_EOF; };
+        RC getNextRecord(RID &rid, void *data);
 
-        RC close() { return -1; };
+        RC close();
     };
 
     class RecordBasedFileManager {
@@ -109,7 +129,7 @@ namespace PeterDB {
 
         RC toRecordBuffer(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const void *data);     // convert data to record using descriptor
 
-        RC getRecordBuffer(FileHandle &fileHandle, const RID &rid);         // Get the record from file to buffer
+        RC getRecordBuffer(FileHandle &fileHandle, const RID &rid, bool recursive);         // Get the record from file to buffer
 
         RC toData(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, void *data);      // Transform record buffer to data
 

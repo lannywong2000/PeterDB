@@ -25,6 +25,12 @@ namespace PeterDB {
 
 #define ERR_ATTRIBUTE_TYPE_UNDEFINED 17
 
+#define ERR_CATALOG_NOT_EXISTS 18
+#define ERR_CATALOG_ILLEGAL_DELETE 19
+
+#define ERR_TABLE_NAME_EXISTS 20
+#define ERR_TABLE_NOT_EXISTS 21
+
 }
 
 #endif // _rc_h_

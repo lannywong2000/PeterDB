@@ -14,7 +14,7 @@ namespace PeterDB {
 
     RecordBasedFileManager &RecordBasedFileManager::operator=(const RecordBasedFileManager &) = default;
 
-    PeterDB::PagedFileManager &pfm = PeterDB::PagedFileManager::instance();
+    PagedFileManager &pfm = PagedFileManager::instance();
 
     RC RecordBasedFileManager::createFile(const std::string &fileName) {
         return pfm.createFile(fileName);
@@ -33,6 +33,7 @@ namespace PeterDB {
     }
 
     RC RecordBasedFileManager::getPageBuffer(FileHandle &fileHandle, unsigned pageNum) {
+        if (fileHandle.curPageNum == pageNum) return 0;
         fileHandle.curPageNum = pageNum;
         return fileHandle.readPage(pageNum, fileHandle.pageBuffer);
     }
@@ -185,7 +186,7 @@ namespace PeterDB {
         return fileHandle.writePage(rid.pageNum, fileHandle.pageBuffer);
     }
 
-    RC RecordBasedFileManager::getRecordBuffer(FileHandle &fileHandle, const RID &rid) {
+    RC RecordBasedFileManager::getRecordBuffer(FileHandle &fileHandle, const RID &rid, bool recursive) {
         getPageBuffer(fileHandle, rid.pageNum);
         Slot slot;
         RC rc = getSlot(fileHandle, slot, rid.slotNum);
@@ -193,19 +194,20 @@ namespace PeterDB {
         if (slot.offset == -1) return ERR_RECORD_READ_DELETED;
         fileHandle.recordLength = slot.length;
         std::memcpy(fileHandle.recordBuffer, (char *) fileHandle.pageBuffer + slot.offset, fileHandle.recordLength);
+        if (!recursive) return 0;
         unsigned char c = 0;
         if (std::memcmp(fileHandle.recordBuffer, &c, 1) == 0) return 0;
         RID recordID;
         std::memcpy(&recordID.pageNum, (char *) fileHandle.recordBuffer + 1, sizeof(unsigned));
         std::memcpy(&recordID.slotNum, (char *) fileHandle.recordBuffer + 1 + sizeof(unsigned), sizeof(unsigned short));
-        return getRecordBuffer(fileHandle, recordID);
+        return getRecordBuffer(fileHandle, recordID, true);
     }
 
     RC RecordBasedFileManager::toData(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, void *data) {
         unsigned numberOfAttributes = recordDescriptor.size();
         unsigned numberOfNullBytes = numberOfAttributes % 8 == 0 ? numberOfAttributes / 8 : numberOfAttributes / 8 + 1;
         char bitmaps[numberOfNullBytes];
-        for (unsigned i = 0; i < numberOfNullBytes; i++) bitmaps[i] = '\0';
+        std::memset(bitmaps, 0, numberOfNullBytes);
 
         unsigned short offset;
         unsigned short pData = numberOfNullBytes;
@@ -247,7 +249,7 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                           const RID &rid, void *data) {
-        RC rc = getRecordBuffer(fileHandle, rid);
+        RC rc = getRecordBuffer(fileHandle, rid, true);
         if (rc == 0) toData(fileHandle, recordDescriptor, data);
 
         return rc;
@@ -383,14 +385,167 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                              const RID &rid, const std::string &attributeName, void *data) {
-        return RC(-1);
+        RC rc = getRecordBuffer(fileHandle, rid, true);
+        if (rc != 0) return rc;
+
+        int index = 0;
+        while (index < recordDescriptor.size()) {
+            if (recordDescriptor[index].name == attributeName) break;
+            index = index + 1;
+        }
+        const Attribute &attr = recordDescriptor[index];
+
+        unsigned short endPtr;
+        std::memcpy(&endPtr, (char *) fileHandle.recordBuffer + 1 + (1 + index) * sizeof(unsigned short), sizeof(unsigned short));
+        if (endPtr == 0) {
+            unsigned char c = (unsigned char) 1 << 7;
+            std::memcpy(data, &c, 1);
+        } else {
+            std::memset(data, 0 , 1);
+            unsigned short startPtr = 0;
+            while (--index >= 0) {
+                std::memcpy(&startPtr, (char *) fileHandle.recordBuffer + 1 + (1 + index) * sizeof(unsigned short), sizeof(unsigned short));
+                if (startPtr != 0) break;
+            }
+            if (startPtr == 0) startPtr = 1 + (1 + recordDescriptor.size()) * sizeof(unsigned short);
+            if (attr.type == 2) {
+                int length = endPtr - startPtr;
+                std::memcpy((char *) data + 1, &length, sizeof(int));
+                std::memcpy((char *) data + 1 + sizeof(int), (char *) fileHandle.recordBuffer + startPtr, endPtr - startPtr);
+            } else std::memcpy((char *) data + 1, (char *) fileHandle.recordBuffer + startPtr, endPtr - startPtr);
+        }
+
+        return 0;
     }
 
     RC RecordBasedFileManager::scan(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                     const std::string &conditionAttribute, const CompOp compOp, const void *value,
                                     const std::vector<std::string> &attributeNames,
                                     RBFM_ScanIterator &rbfm_ScanIterator) {
-        return RC(-1);
+        rbfm_ScanIterator.fileHandle = fileHandle;
+        rbfm_ScanIterator.rids = std::vector<RID>();
+        rbfm_ScanIterator.pos = 0;
+        rbfm_ScanIterator.recordDescriptor = recordDescriptor;
+        rbfm_ScanIterator.attributeNames = attributeNames;
+
+        Attribute attr;
+        for (const auto &attrDescriptor: recordDescriptor) {
+            if (attrDescriptor.name == conditionAttribute) {
+                attr = attrDescriptor;
+                break;
+            }
+        }
+
+        int intBuffer, intValue, length;
+        float floatBuffer, floatValue;
+        unsigned char c = 0;
+        bool mark;
+        unsigned numberOfPages = fileHandle.getNumberOfPages();
+        for (unsigned pageNum = 0; pageNum < numberOfPages; pageNum = pageNum + 1) {
+            getPageBuffer(fileHandle, pageNum);
+            unsigned short numberOfSlots = getNumberOfSlot(fileHandle);
+            for (unsigned short slotNum = 0; slotNum < numberOfSlots; slotNum = slotNum + 1) {
+                Slot slot;
+                getSlot(fileHandle, slot, slotNum);
+                if (slot.offset == -1) continue;
+                RID rid(pageNum, slotNum);
+                getRecordBuffer(fileHandle, rid, false);
+                if (std::memcmp(fileHandle.recordBuffer, &c, 1) != 0) continue;
+                char data[1 + sizeof(int) + attr.length];
+                readAttribute(fileHandle, recordDescriptor, rid, conditionAttribute, data);
+                if (std::memcmp(data, &c, 1) != 0) continue;
+                if (conditionAttribute.empty()) {
+                    rbfm_ScanIterator.rids.push_back(rid);
+                    continue;
+                }
+                switch (attr.type) {
+                    case 0:
+                        std::memcpy(&intBuffer, data + 1, sizeof(int));
+                        std::memcpy(&intValue, value, sizeof(int));
+                        break;
+                    case 1:
+                        std::memcpy(&floatBuffer, data + 1, sizeof(float));
+                        std::memcpy(&floatValue, value, sizeof(float));
+                        break;
+                    default:
+                        std::memcpy(&length, data + 1, sizeof(int));
+                }
+                switch (compOp) {
+                    case 0:
+                        if (attr.type == 0) mark = intBuffer == intValue;
+                        else if (attr.type == 1) mark = floatBuffer == floatValue;
+                        else mark = std::memcmp(data + 1 + sizeof(int), value, length) == 0;
+                        break;
+                    case 1:
+                        if (attr.type == 0) mark = intBuffer < intValue;
+                        else if (attr.type == 1) mark = floatBuffer < floatValue;
+                        else mark = std::memcmp(data + 1 + sizeof(int), value, length) < 0;
+                        break;
+                    case 2:
+                        if (attr.type == 0) mark = intBuffer <= intValue;
+                        else if (attr.type == 1) mark = floatBuffer <= floatValue;
+                        else mark = std::memcmp(data + 1 + sizeof(int), value, length) <= 0;
+                        break;
+                    case 3:
+                        if (attr.type == 0) mark = intBuffer > intValue;
+                        else if (attr.type == 1) mark = floatBuffer > floatValue;
+                        else mark = std::memcmp(data + 1 + sizeof(int), value, length) > 0;
+                        break;
+                    case 4:
+                        if (attr.type == 0) mark = intBuffer >= intValue;
+                        else if (attr.type == 1) mark = floatBuffer >= floatValue;
+                        else mark = std::memcmp(data + 1 + sizeof(int), value, length) >= 0;
+                        break;
+                    case 5:
+                        if (attr.type == 0) mark = intBuffer != intValue;
+                        else if (attr.type == 1) mark = floatBuffer != floatValue;
+                        else mark = std::memcmp(data + 1 + sizeof(int), value, length) != 0;
+                        break;
+                    default:
+                        mark = true;
+                }
+                if (mark) rbfm_ScanIterator.rids.push_back(rid);
+            }
+        }
+
+        return 0;
+    }
+
+    RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
+        if (pos >= rids.size()) return RBFM_EOF;
+        rid = rids[pos];
+        int attrsLength = attributeNames.size();
+        int bitmapBytes = attrsLength % 8 ? attrsLength / 8 + 1 : attrsLength / 8;
+        char bitmaps[bitmapBytes];
+        std::memset(bitmaps, 0, bitmapBytes);
+        int offset = bitmapBytes;
+        for (int index = 0; index < attrsLength; index = index + 1) {
+            const std::string &attributeName = attributeNames[index];
+            for (const Attribute &attr : recordDescriptor) {
+                if (attr.name == attributeName) {
+                    char dataBuffer[1 + sizeof(int) + attr.length];
+                    RecordBasedFileManager::instance().readAttribute(fileHandle, recordDescriptor, rid, attr.name, dataBuffer);
+                    if (dataBuffer[0] >> 7 & (unsigned) 1) bitmaps[index / 8] |= (unsigned) 1 << (7 - index % 8);
+                    else if (attr.type == 2) {
+                        int length;
+                        std::memcpy(&length, dataBuffer + 1, sizeof(int));
+                        std::memcpy((char *) data + offset, dataBuffer + 1, sizeof(int) + length);
+                        offset = offset + sizeof(int) + length;
+                    } else {
+                        std::memcpy((char *) data + offset, dataBuffer + 1, sizeof(int));
+                        offset = offset + sizeof(int);
+                    }
+                    break;
+                }
+            }
+        }
+        std::memcpy(data, bitmaps, bitmapBytes);
+        pos = pos + 1;
+        return 0;
+    }
+
+    RC RBFM_ScanIterator::close() {
+        return pfm.closeFile(fileHandle);
     }
 
 } // namespace PeterDB

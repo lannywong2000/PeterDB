@@ -10,9 +10,15 @@ namespace PeterDB {
 
 #define RM_EOF (-1)
 
+#define tablesName "Tables"
+
+#define columnsName "Columns"
+
     // RM_ScanIterator is an iterator to go through tuples
     class RM_ScanIterator {
     public:
+        RBFM_ScanIterator rbfm_ScanIterator;
+
         RM_ScanIterator();
 
         ~RM_ScanIterator();
@@ -36,12 +42,33 @@ namespace PeterDB {
 
     // Relation Manager
     class RelationManager {
+    private:
+        char *tableIdBuffer, *attributesBuffer;
+
+        static std::vector<Attribute> getTablesAttrs();
+
+        static std::vector<Attribute> getColumnsAttrs();
+
+        static std::vector<std::string> getAttributeAttrs();
+
     public:
         static RelationManager &instance();
+
+        bool checkTableExists(const std::string &tableName);
+
+        RC insertTables(FileHandle &tablesHandle, int tableId, const std::string &tableName);
+
+        RC insertColumns(FileHandle &columnsHandle, int tableId, const std::vector<Attribute> &attrs);
 
         RC createCatalog();
 
         RC deleteCatalog();
+
+        int getTableId(const std::string &tableName);
+
+        std::string getFileName(const std::string &tableName);
+
+        int generateTableId();
 
         RC createTable(const std::string &tableName, const std::vector<Attribute> &attrs);
 
