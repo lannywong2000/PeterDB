@@ -51,6 +51,8 @@ namespace PeterDB {
 
         static std::vector<std::string> getAttributeAttrs();
 
+        RC deleteFromSystemFiles(const std::string &tableName, const RID &rid);
+
     public:
         static RelationManager &instance();
 

@@ -8,7 +8,9 @@ namespace PeterDB {
 
     RelationManager::RelationManager() {
         tableIdBuffer = new char[5];
-        attributesBuffer = new char[70];
+        std::memset(tableIdBuffer, 0, 5);
+        attributesBuffer = new char[67];
+        std::memset(attributesBuffer, 0, 67);
     }
 
     RelationManager::~RelationManager() {
@@ -70,8 +72,8 @@ namespace PeterDB {
     RC RelationManager::insertColumns(FileHandle &columnsHandle, int tableId, const std::vector<Attribute> &attrs) {
         RID rid;
         int attrsLength = attrs.size();
-        for (int pos = 0; pos < attrsLength; pos = pos + 1) {
-            const Attribute &attr = attrs[pos];
+        for (int pos = 1; pos <= attrsLength; pos = pos + 1) {
+            const Attribute &attr = attrs[pos - 1];
             int attrNameLength = attr.name.size();
             char *data = new char[1 + 5 * sizeof(int) + attrNameLength];
             std::memset(data, 0, 1);
@@ -86,6 +88,17 @@ namespace PeterDB {
             if (rc != 0) return rc;
         }
         return 0;
+    }
+
+    RC RelationManager::deleteFromSystemFiles(const std::string &tableName, const RID &rid) {
+        if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
+        std::vector<Attribute> attrs;
+        getAttributes(tableName, attrs);
+        FileHandle fileHandle;
+        rbfm.openFile(getFileName(tableName), fileHandle);
+        RC rc = rbfm.deleteRecord(fileHandle, attrs, rid);
+        rbfm.closeFile(fileHandle);
+        return rc;
     }
 
     RC RelationManager::createCatalog() {
@@ -169,6 +182,7 @@ namespace PeterDB {
     }
 
     RC RelationManager::deleteTable(const std::string &tableName) {
+        if (tableName == tablesName || tableName == columnsName) return ERR_CATALOG_ILLEGAL_DELETE;
         if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
         RM_ScanIterator rm_ScanIterator;
         std::vector<std::string> attributeNames = {"table-id"};
@@ -180,8 +194,7 @@ namespace PeterDB {
         std::memcpy(&tableId, data + 1, sizeof(int));
         rm_ScanIterator.close();
         if (rc != 0) return rc;
-        if (tableId < 0) return ERR_CATALOG_ILLEGAL_DELETE;
-        deleteTuple(tablesName, rid);
+        deleteFromSystemFiles(tablesName, rid);
 
         std::vector<RID> toBeDeleted;
         scan(columnsName, "table-id", EQ_OP, &tableId, attributeNames, rm_ScanIterator);
@@ -189,7 +202,8 @@ namespace PeterDB {
             std::memcpy(&tableId, data + 1, sizeof(int));
             toBeDeleted.push_back(rid);
         }
-        for (const RID &ridBuffer : toBeDeleted) deleteTuple(columnsName, ridBuffer);
+        rm_ScanIterator.close();
+        for (const RID &ridBuffer : toBeDeleted) deleteFromSystemFiles(columnsName, ridBuffer);
 
         return rbfm.destroyFile(getFileName(tableName));
     }
@@ -201,17 +215,17 @@ namespace PeterDB {
         scan(columnsName, "table-id", EQ_OP, &tableId, getAttributeAttrs(), rm_ScanIterator);
 
         RID rid;
+        int attributeNameLength, position;
         attrs = std::vector<Attribute>(rm_ScanIterator.rbfm_ScanIterator.rids.size());
         while (rm_ScanIterator.getNextTuple(rid, attributesBuffer) != RM_EOF) {
-            int attributeNameLength, position;
             std::memcpy(&attributeNameLength, attributesBuffer + 1, sizeof(int));
             std::memcpy(&position, attributesBuffer + 1 + 3 * sizeof(int) + attributeNameLength, sizeof(int));
             char *attributeName = new char[attributeNameLength];
             std::memset(attributeName, 0, attributeNameLength);
             std::memcpy(attributeName, attributesBuffer + 1 + sizeof(int), attributeNameLength);
-            attrs[position].name = attributeName;
-            std::memcpy(&attrs[position].type, attributesBuffer + 1 + sizeof(int) + attributeNameLength, sizeof(int));
-            std::memcpy(&attrs[position].length, attributesBuffer + 1 + 2 * sizeof(int) + attributeNameLength, sizeof(int));
+            attrs[position - 1].name = attributeName;
+            std::memcpy(&attrs[position - 1].type, attributesBuffer + 1 + sizeof(int) + attributeNameLength, sizeof(int));
+            std::memcpy(&attrs[position - 1].length, attributesBuffer + 1 + 2 * sizeof(int) + attributeNameLength, sizeof(int));
             delete[] attributeName;
         }
 
@@ -221,6 +235,7 @@ namespace PeterDB {
     }
 
     RC RelationManager::insertTuple(const std::string &tableName, const void *data, RID &rid) {
+        if (tableName == tablesName || tableName == columnsName) return ERR_CATALOG_ILLEGAL_MODIFY;
         if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
         std::vector<Attribute> attrs;
         getAttributes(tableName, attrs);
@@ -232,6 +247,7 @@ namespace PeterDB {
     }
 
     RC RelationManager::deleteTuple(const std::string &tableName, const RID &rid) {
+        if (tableName == tablesName || tableName == columnsName) return ERR_CATALOG_ILLEGAL_MODIFY;
         if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
         std::vector<Attribute> attrs;
         getAttributes(tableName, attrs);
@@ -293,7 +309,8 @@ namespace PeterDB {
         if (tableName == tablesName) attrs = getTablesAttrs();
         else if (tableName == columnsName) attrs = getColumnsAttrs();
         else getAttributes(tableName, attrs);
-        return rbfm.scan(fileHandle, attrs, conditionAttribute, compOp, value, attributeNames, rm_ScanIterator.rbfm_ScanIterator);
+        rc = rbfm.scan(fileHandle, attrs, conditionAttribute, compOp, value, attributeNames, rm_ScanIterator.rbfm_ScanIterator);
+        return rc;
     }
 
     RM_ScanIterator::RM_ScanIterator() = default;

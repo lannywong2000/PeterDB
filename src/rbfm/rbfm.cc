@@ -545,7 +545,9 @@ namespace PeterDB {
     }
 
     RC RBFM_ScanIterator::close() {
-        return pfm.closeFile(fileHandle);
+        fileHandle.closeFile();
+        rids.clear();
+        return 0;
     }
 
 } // namespace PeterDB

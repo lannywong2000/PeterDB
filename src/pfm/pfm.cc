@@ -85,6 +85,7 @@ namespace PeterDB {
         free(recordBuffer);
 
         if (fclose(pFile) != 0) return ERR_FILE_CLOSE_FAILED;
+        pFile = nullptr;
         return 0;
     }
 
