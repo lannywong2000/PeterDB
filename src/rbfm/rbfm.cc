@@ -449,15 +449,15 @@ namespace PeterDB {
                 getSlot(fileHandle, slot, slotNum);
                 if (slot.offset == -1) continue;
                 RID rid(pageNum, slotNum);
+                if (conditionAttribute.empty()) {
+                    rbfm_ScanIterator.rids.push_back(rid);
+                    continue;
+                }
                 getRecordBuffer(fileHandle, rid, false);
                 if (std::memcmp(fileHandle.recordBuffer, &c, 1) != 0) continue;
                 char data[1 + sizeof(int) + attr.length];
                 readAttribute(fileHandle, recordDescriptor, rid, conditionAttribute, data);
                 if (std::memcmp(data, &c, 1) != 0) continue;
-                if (conditionAttribute.empty()) {
-                    rbfm_ScanIterator.rids.push_back(rid);
-                    continue;
-                }
                 switch (attr.type) {
                     case 0:
                         std::memcpy(&intBuffer, data + 1, sizeof(int));
