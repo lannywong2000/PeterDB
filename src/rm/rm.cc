@@ -193,7 +193,7 @@ namespace PeterDB {
         RC rc = rm_ScanIterator.getNextTuple(rid, data);
         std::memcpy(&tableId, data + 1, sizeof(int));
         rm_ScanIterator.close();
-        if (rc != 0) return 100;
+        if (rc != 0) return rc;
         deleteFromSystemFiles(tablesName, rid);
 
         std::vector<RID> toBeDeleted;
