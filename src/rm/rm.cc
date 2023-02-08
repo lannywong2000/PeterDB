@@ -170,10 +170,8 @@ namespace PeterDB {
         rbfm.openFile(columnsName, columnsHandle);
 
         int tableId = generateTableId();
-        RC rc = insertTables(tablesHandle, tableId, tableName);
-        if (rc != 0) return 100;
-        rc = insertColumns(columnsHandle, tableId, attrs);
-        if (rc != 0) return 101;
+        insertTables(tablesHandle, tableId, tableName);
+        insertColumns(columnsHandle, tableId, attrs);
 
         rbfm.createFile(tableName);
 
