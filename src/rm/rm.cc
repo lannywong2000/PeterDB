@@ -191,7 +191,6 @@ namespace PeterDB {
         int tableId;
         char data[5];
         RC rc = rm_ScanIterator.getNextTuple(rid, data);
-        return rm_ScanIterator.rbfm_ScanIterator.rids.size();
         std::memcpy(&tableId, data + 1, sizeof(int));
         rm_ScanIterator.close();
         if (rc != 0) return rc;
