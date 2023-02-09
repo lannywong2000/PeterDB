@@ -1,5 +1,4 @@
 #include "src/include/rm.h"
-#include <iostream>
 
 namespace PeterDB {
     RelationManager &RelationManager::instance() {
@@ -135,7 +134,10 @@ namespace PeterDB {
     int RelationManager::getTableId(const std::string &tableName) {
         RM_ScanIterator rm_ScanIterator;
         std::vector<std::string> attributeNames = {"table-id"};
-        scan(tablesName, "table-name", EQ_OP, &tableName, attributeNames, rm_ScanIterator);
+        void *tableNameBuffer = malloc(tableName.size());
+        std::memcpy(tableNameBuffer, tableName.c_str(), tableName.size());
+        scan(tablesName, "table-name", EQ_OP, tableNameBuffer, attributeNames, rm_ScanIterator);
+        free(tableNameBuffer);
         RID rid;
         int tableId;
         rm_ScanIterator.getNextTuple(rid, tableIdBuffer);
@@ -185,13 +187,12 @@ namespace PeterDB {
     RC RelationManager::deleteTable(const std::string &tableName) {
         if (tableName == tablesName || tableName == columnsName) return ERR_CATALOG_ILLEGAL_DELETE;
         if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
-        RM_ScanIterator rm_ScanIterator;
-        std::vector<std::string> attributeNames = {"table-id"};
-        scan(tablesName, "table-name", EQ_OP, &tableName, attributeNames, rm_ScanIterator);
+        int tableId = getTableId(tableName);
         RID rid;
-        int tableId;
+        RM_ScanIterator rm_ScanIterator;
+        std::vector<std::string> attributeNames;
+        scan(tablesName, "table-id", EQ_OP, &tableId, attributeNames, rm_ScanIterator);
         RC rc = rm_ScanIterator.getNextTuple(rid, tableIdBuffer);
-        std::memcpy(&tableId, (char *) tableIdBuffer + 1, sizeof(int));
         rm_ScanIterator.close();
         if (rc != 0) return rc;
         deleteFromSystemFiles(tablesName, rid);
@@ -310,7 +311,6 @@ namespace PeterDB {
         std::vector<Attribute> attrs;
         getAttributes(tableName, attrs);
         rc = rbfm.scan(fileHandle, attrs, conditionAttribute, compOp, value, attributeNames, rm_ScanIterator.rbfm_ScanIterator);
-        std::cout << rm_ScanIterator.rbfm_ScanIterator.rids.size() << std::endl;
         return rc;
     }
 
