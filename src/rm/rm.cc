@@ -141,7 +141,6 @@ namespace PeterDB {
         rm_ScanIterator.getNextTuple(rid, tableIdBuffer);
         std::memcpy(&tableId, tableIdBuffer + 1, sizeof(int));
         rm_ScanIterator.close();
-        std::cout << tableId << std::endl;
         return tableId;
     }
 
@@ -160,6 +159,7 @@ namespace PeterDB {
             tableId = nextTableId > tableId ? nextTableId : tableId;
         }
         rm_ScanIterator.close();
+        std::cout << tableId + 1 << std::endl;
         return tableId + 1;
     }
 
