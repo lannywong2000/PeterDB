@@ -57,15 +57,14 @@ namespace PeterDB {
     RC RelationManager::insertTables(FileHandle &tablesHandle, int tableId, const std::string &tableName) {
         RID rid;
         int tableNameLength = tableName.size();
-        void *data = malloc(1 + 3 * sizeof(int) + 2 * tableNameLength);
+        char data[1 + 3 * sizeof(int) + 2 * tableNameLength];
         std::memset(data, 0, 1);
-        std::memcpy((char *) data + 1, &tableId, sizeof(int));
-        std::memcpy((char *) data + 1 + sizeof(int), &tableNameLength, sizeof(int));
-        std::memcpy((char *) data + 1 + 2 * sizeof(int), tableName.c_str(), tableNameLength);
-        std::memcpy((char *) data + 1 + 2 * sizeof(int) + tableNameLength, &tableNameLength, sizeof(int));
-        std::memcpy((char *) data + 1 + 3 * sizeof(int) + tableNameLength, tableName.c_str(), tableNameLength);
+        std::memcpy(data + 1, &tableId, sizeof(int));
+        std::memcpy(data + 1 + sizeof(int), &tableNameLength, sizeof(int));
+        std::memcpy(data + 1 + 2 * sizeof(int), tableName.c_str(), tableNameLength);
+        std::memcpy(data + 1 + 2 * sizeof(int) + tableNameLength, &tableNameLength, sizeof(int));
+        std::memcpy(data + 1 + 3 * sizeof(int) + tableNameLength, tableName.c_str(), tableNameLength);
         RC rc = rbfm.insertRecord(tablesHandle, getTablesAttrs(), data, rid);
-        free(data);
         return rc;
     }
 
@@ -75,16 +74,15 @@ namespace PeterDB {
         for (int pos = 1; pos <= attrsLength; pos = pos + 1) {
             const Attribute &attr = attrs[pos - 1];
             int attrNameLength = attr.name.size();
-            void *data = malloc(1 + 5 * sizeof(int) + attrNameLength);
+            char data[1 + 5 * sizeof(int) + attrNameLength];
             std::memset(data, 0, 1);
-            std::memcpy((char *) data + 1, &tableId, sizeof(int));
-            std::memcpy((char *) data + 1 + sizeof(int), &attrNameLength, sizeof(int));
-            std::memcpy((char *) data + 1 + 2 * sizeof(int), attr.name.c_str(), attrNameLength);
-            std::memcpy((char *) data + 1 + 2 * sizeof(int) + attrNameLength, &attr.type, sizeof(int));
-            std::memcpy((char *) data + 1 + 3 * sizeof(int) + attrNameLength, &attr.length, sizeof(int));
-            std::memcpy((char *) data + 1 + 4 * sizeof(int) + attrNameLength, &pos, sizeof(int));
+            std::memcpy(data + 1, &tableId, sizeof(int));
+            std::memcpy(data + 1 + sizeof(int), &attrNameLength, sizeof(int));
+            std::memcpy(data + 1 + 2 * sizeof(int), attr.name.c_str(), attrNameLength);
+            std::memcpy(data + 1 + 2 * sizeof(int) + attrNameLength, &attr.type, sizeof(int));
+            std::memcpy(data + 1 + 3 * sizeof(int) + attrNameLength, &attr.length, sizeof(int));
+            std::memcpy(data + 1 + 4 * sizeof(int) + attrNameLength, &pos, sizeof(int));
             RC rc = rbfm.insertRecord(columnsHandle, getColumnsAttrs(), data, rid);
-            free(data);
             if (rc != 0) return rc;
         }
         return 0;
@@ -134,10 +132,9 @@ namespace PeterDB {
     int RelationManager::getTableId(const std::string &tableName) {
         RM_ScanIterator rm_ScanIterator;
         std::vector<std::string> attributeNames = {"table-id"};
-        void *tableNameBuffer = malloc(tableName.size());
+        char tableNameBuffer[tableName.size()];
         std::memcpy(tableNameBuffer, tableName.c_str(), tableName.size());
         scan(tablesName, "table-name", EQ_OP, tableNameBuffer, attributeNames, rm_ScanIterator);
-        free(tableNameBuffer);
         RID rid;
         int tableId;
         rm_ScanIterator.getNextTuple(rid, tableIdBuffer);

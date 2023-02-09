@@ -456,6 +456,7 @@ namespace PeterDB {
                 getRecordBuffer(fileHandle, rid, false);
                 if (std::memcmp(fileHandle.recordBuffer, &c, 1) != 0) continue;
                 char data[1 + sizeof(int) + attr.length];
+                std::memset(data, 0, 1 + sizeof(int) + attr.length);
                 readAttribute(fileHandle, recordDescriptor, rid, conditionAttribute, data);
                 if (std::memcmp(data, &c, 1) != 0) continue;
                 switch (attr.type) {
