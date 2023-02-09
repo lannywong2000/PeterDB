@@ -212,8 +212,9 @@ namespace PeterDB {
 
     RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attribute> &attrs) {
         if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
+        if (tableName == tablesName) {attrs = getTablesAttrs(); return 0;}
+        if (tableName == columnsName) {attrs = getColumnsAttrs(); return 0;}
         int tableId = getTableId(tableName);
-        tableId = getTableId(tableName);
         std::cout << tableId << std::endl;
         RM_ScanIterator rm_ScanIterator;
         scan(columnsName, "table-id", EQ_OP, &tableId, getAttributeAttrs(), rm_ScanIterator);
@@ -310,9 +311,7 @@ namespace PeterDB {
         RC rc = rbfm.openFile(getFileName(tableName), fileHandle);
         if (rc != 0) return rc;
         std::vector<Attribute> attrs;
-        if (tableName == tablesName) attrs = getTablesAttrs();
-        else if (tableName == columnsName) attrs = getColumnsAttrs();
-        else getAttributes(tableName, attrs);
+        getAttributes(tableName, attrs);
         rc = rbfm.scan(fileHandle, attrs, conditionAttribute, compOp, value, attributeNames, rm_ScanIterator.rbfm_ScanIterator);
         return rc;
     }
