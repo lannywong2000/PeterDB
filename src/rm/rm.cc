@@ -191,6 +191,7 @@ namespace PeterDB {
         scan(tablesName, "table-name", EQ_OP, &tableName, attributeNames, rm_ScanIterator);
         RID rid;
         int tableId;
+        std::cout << rm_ScanIterator.rbfm_ScanIterator.rids.size() << std::endl;
         RC rc = rm_ScanIterator.getNextTuple(rid, tableIdBuffer);
         std::memcpy(&tableId, tableIdBuffer + 1, sizeof(int));
         rm_ScanIterator.close();
