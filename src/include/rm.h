@@ -43,7 +43,7 @@ namespace PeterDB {
     // Relation Manager
     class RelationManager {
     private:
-        char *tableIdBuffer, *attributesBuffer;
+        void *tableIdBuffer, *attributesBuffer;
 
         static std::vector<Attribute> getTablesAttrs();
 

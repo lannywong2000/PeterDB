@@ -8,15 +8,15 @@ namespace PeterDB {
     }
 
     RelationManager::RelationManager() {
-        tableIdBuffer = new char[5];
+        tableIdBuffer = malloc(5);
         std::memset(tableIdBuffer, 0, 5);
-        attributesBuffer = new char[67];
+        attributesBuffer = malloc(67);
         std::memset(attributesBuffer, 0, 67);
     }
 
     RelationManager::~RelationManager() {
-        delete[] tableIdBuffer;
-        delete[] attributesBuffer;
+        free(tableIdBuffer);
+        free(attributesBuffer);
     }
 
     RelationManager::RelationManager(const RelationManager &) = default;
@@ -58,15 +58,15 @@ namespace PeterDB {
     RC RelationManager::insertTables(FileHandle &tablesHandle, int tableId, const std::string &tableName) {
         RID rid;
         int tableNameLength = tableName.size();
-        char *data = new char[1 + 3 * sizeof(int) + 2 * tableNameLength];
+        void *data = malloc(1 + 3 * sizeof(int) + 2 * tableNameLength);
         std::memset(data, 0, 1);
-        std::memcpy(data + 1, &tableId, sizeof(int));
-        std::memcpy(data + 1 + sizeof(int), &tableNameLength, sizeof(int));
-        std::memcpy(data + 1 + 2 * sizeof(int), tableName.c_str(), tableNameLength);
-        std::memcpy(data + 1 + 2 * sizeof(int) + tableNameLength, &tableNameLength, sizeof(int));
-        std::memcpy(data + 1 + 3 * sizeof(int) + tableNameLength, tableName.c_str(), tableNameLength);
+        std::memcpy((char *) data + 1, &tableId, sizeof(int));
+        std::memcpy((char *) data + 1 + sizeof(int), &tableNameLength, sizeof(int));
+        std::memcpy((char *) data + 1 + 2 * sizeof(int), tableName.c_str(), tableNameLength);
+        std::memcpy((char *) data + 1 + 2 * sizeof(int) + tableNameLength, &tableNameLength, sizeof(int));
+        std::memcpy((char *) data + 1 + 3 * sizeof(int) + tableNameLength, tableName.c_str(), tableNameLength);
         RC rc = rbfm.insertRecord(tablesHandle, getTablesAttrs(), data, rid);
-        delete[] data;
+        free(data);
         return rc;
     }
 
@@ -76,16 +76,16 @@ namespace PeterDB {
         for (int pos = 1; pos <= attrsLength; pos = pos + 1) {
             const Attribute &attr = attrs[pos - 1];
             int attrNameLength = attr.name.size();
-            char *data = new char[1 + 5 * sizeof(int) + attrNameLength];
+            void *data = malloc(1 + 5 * sizeof(int) + attrNameLength);
             std::memset(data, 0, 1);
-            std::memcpy(data + 1, &tableId, sizeof(int));
-            std::memcpy(data + 1 + sizeof(int), &attrNameLength, sizeof(int));
-            std::memcpy(data + 1 + 2 * sizeof(int), attr.name.c_str(), attrNameLength);
-            std::memcpy(data + 1 + 2 * sizeof(int) + attrNameLength, &attr.type, sizeof(int));
-            std::memcpy(data + 1 + 3 * sizeof(int) + attrNameLength, &attr.length, sizeof(int));
-            std::memcpy(data + 1 + 4 * sizeof(int) + attrNameLength, &pos, sizeof(int));
+            std::memcpy((char *) data + 1, &tableId, sizeof(int));
+            std::memcpy((char *) data + 1 + sizeof(int), &attrNameLength, sizeof(int));
+            std::memcpy((char *) data + 1 + 2 * sizeof(int), attr.name.c_str(), attrNameLength);
+            std::memcpy((char *) data + 1 + 2 * sizeof(int) + attrNameLength, &attr.type, sizeof(int));
+            std::memcpy((char *) data + 1 + 3 * sizeof(int) + attrNameLength, &attr.length, sizeof(int));
+            std::memcpy((char *) data + 1 + 4 * sizeof(int) + attrNameLength, &pos, sizeof(int));
             RC rc = rbfm.insertRecord(columnsHandle, getColumnsAttrs(), data, rid);
-            delete[] data;
+            free(data);
             if (rc != 0) return rc;
         }
         return 0;
@@ -139,7 +139,7 @@ namespace PeterDB {
         RID rid;
         int tableId;
         rm_ScanIterator.getNextTuple(rid, tableIdBuffer);
-        std::memcpy(&tableId, tableIdBuffer + 1, sizeof(int));
+        std::memcpy(&tableId, (char *) tableIdBuffer + 1, sizeof(int));
         rm_ScanIterator.close();
         return tableId;
     }
@@ -155,7 +155,7 @@ namespace PeterDB {
         RID rid;
         int tableId = -1, nextTableId;
         while (rm_ScanIterator.getNextTuple(rid, tableIdBuffer) != RM_EOF) {
-            std::memcpy(&nextTableId, tableIdBuffer + 1, sizeof(int));
+            std::memcpy(&nextTableId, (char *) tableIdBuffer + 1, sizeof(int));
             tableId = nextTableId > tableId ? nextTableId : tableId;
         }
         rm_ScanIterator.close();
@@ -193,7 +193,7 @@ namespace PeterDB {
         int tableId;
         std::cout << rm_ScanIterator.rbfm_ScanIterator.rids.size() << std::endl;
         RC rc = rm_ScanIterator.getNextTuple(rid, tableIdBuffer);
-        std::memcpy(&tableId, tableIdBuffer + 1, sizeof(int));
+        std::memcpy(&tableId, (char *) tableIdBuffer + 1, sizeof(int));
         rm_ScanIterator.close();
         if (rc != 0) return rc;
         deleteFromSystemFiles(tablesName, rid);
@@ -201,7 +201,7 @@ namespace PeterDB {
         std::vector<RID> toBeDeleted;
         scan(columnsName, "table-id", EQ_OP, &tableId, attributeNames, rm_ScanIterator);
         while (rm_ScanIterator.getNextTuple(rid, tableIdBuffer) != RM_EOF) {
-            std::memcpy(&tableId, tableIdBuffer + 1, sizeof(int));
+            std::memcpy(&tableId, (char *) tableIdBuffer + 1, sizeof(int));
             toBeDeleted.push_back(rid);
         }
         rm_ScanIterator.close();
@@ -221,14 +221,14 @@ namespace PeterDB {
         int attributeNameLength, position;
         attrs = std::vector<Attribute>(rm_ScanIterator.rbfm_ScanIterator.rids.size());
         while (rm_ScanIterator.getNextTuple(rid, attributesBuffer) != RM_EOF) {
-            std::memcpy(&attributeNameLength, attributesBuffer + 1, sizeof(int));
-            std::memcpy(&position, attributesBuffer + 1 + 3 * sizeof(int) + attributeNameLength, sizeof(int));
+            std::memcpy(&attributeNameLength, (char *) attributesBuffer + 1, sizeof(int));
+            std::memcpy(&position, (char *) attributesBuffer + 1 + 3 * sizeof(int) + attributeNameLength, sizeof(int));
             char *attributeName = new char[attributeNameLength];
             std::memset(attributeName, 0, attributeNameLength);
-            std::memcpy(attributeName, attributesBuffer + 1 + sizeof(int), attributeNameLength);
+            std::memcpy(attributeName, (char *) attributesBuffer + 1 + sizeof(int), attributeNameLength);
             attrs[position - 1].name = attributeName;
-            std::memcpy(&attrs[position - 1].type, attributesBuffer + 1 + sizeof(int) + attributeNameLength, sizeof(int));
-            std::memcpy(&attrs[position - 1].length, attributesBuffer + 1 + 2 * sizeof(int) + attributeNameLength, sizeof(int));
+            std::memcpy(&attrs[position - 1].type, (char *) attributesBuffer + 1 + sizeof(int) + attributeNameLength, sizeof(int));
+            std::memcpy(&attrs[position - 1].length, (char *) attributesBuffer + 1 + 2 * sizeof(int) + attributeNameLength, sizeof(int));
             delete[] attributeName;
         }
 
