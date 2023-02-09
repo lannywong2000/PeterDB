@@ -1,4 +1,5 @@
 #include "src/include/rm.h"
+#include <iostream>
 
 namespace PeterDB {
     RelationManager &RelationManager::instance() {
@@ -140,6 +141,7 @@ namespace PeterDB {
         rm_ScanIterator.getNextTuple(rid, tableIdBuffer);
         std::memcpy(&tableId, tableIdBuffer + 1, sizeof(int));
         rm_ScanIterator.close();
+        std::cout << tableId << std::endl;
         return tableId;
     }
 

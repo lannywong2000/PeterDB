@@ -61,7 +61,7 @@ namespace PeterDBTesting {
         // GetAttributes
         ASSERT_EQ(rm.getAttributes(tableName, attrs), success) << "RelationManager::getAttributes() should succeed.";
 
-        std::cout << attrs[0].name << " " << attrs[1].name << " " << attrs[2].name << " " << attrs[3].name;
+        std::cout << attrs[0].name << " " << attrs[1].name << " " << attrs[2].name << " " << attrs[3].name << std::endl;;
 
         ASSERT_EQ(attrs[0].name, "emp_name") << "Attribute is not correct.";
         ASSERT_EQ(attrs[0].type, PeterDB::TypeVarChar) << "Attribute is not correct.";
