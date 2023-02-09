@@ -393,6 +393,7 @@ namespace PeterDB {
             if (recordDescriptor[index].name == attributeName) break;
             index = index + 1;
         }
+        if (index >= recordDescriptor.size()) return ERR_ATTRIBUTE_NOT_EXISTS;
         const Attribute &attr = recordDescriptor[index];
 
         unsigned short endPtr = 0;
