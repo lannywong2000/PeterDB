@@ -132,8 +132,10 @@ namespace PeterDB {
     int RelationManager::getTableId(const std::string &tableName) {
         RM_ScanIterator rm_ScanIterator;
         std::vector<std::string> attributeNames = {"table-id"};
-        char tableNameBuffer[tableName.size()];
-        std::memcpy(tableNameBuffer, tableName.c_str(), tableName.size());
+        int tableNameLength = tableName.size();
+        char tableNameBuffer[sizeof(int) + tableNameLength];
+        std::memcpy(tableNameBuffer, &tableNameLength, sizeof(int));
+        std::memcpy(tableNameBuffer + sizeof(int), tableName.c_str(), tableNameLength);
         scan(tablesName, "table-name", EQ_OP, tableNameBuffer, attributeNames, rm_ScanIterator);
         RID rid;
         int tableId;

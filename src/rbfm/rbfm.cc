@@ -439,8 +439,9 @@ namespace PeterDB {
             }
         }
 
-        int intBuffer, intValue, length;
+        int intBuffer, intValue, lengthBuffer, length;
         float floatBuffer, floatValue;
+        char *varCharBuffer = nullptr, *varChar = nullptr;
         unsigned char c = 0;
         bool mark;
         unsigned numberOfPages = fileHandle.getNumberOfPages();
@@ -462,6 +463,10 @@ namespace PeterDB {
                 std::memset(data, 0, 1 + sizeof(int) + attr.length);
                 readAttribute(fileHandle, recordDescriptor, rid, conditionAttribute, data);
                 if (std::memcmp(data, &c, 1) != 0) continue;
+                if (compOp == NO_OP) {
+                    rbfm_ScanIterator.rids.push_back(rid);
+                    continue;
+                }
                 switch (attr.type) {
                     case 0:
                         std::memcpy(&intBuffer, data + 1, sizeof(int));
@@ -472,38 +477,45 @@ namespace PeterDB {
                         std::memcpy(&floatValue, value, sizeof(float));
                         break;
                     default:
-                        std::memcpy(&length, data + 1, sizeof(int));
+                        std::memcpy(&lengthBuffer, data + 1, sizeof(int));
+                        std::memcpy(&length, value, sizeof(int));
+                        varCharBuffer = new char[lengthBuffer + 1];
+                        std::memset(varCharBuffer, 0, lengthBuffer + 1);
+                        std::memcpy(varCharBuffer, data + 1 + sizeof(int), lengthBuffer);
+                        varChar = new char[length + 1];
+                        std::memset(varChar, 0, length + 1);
+                        std::memcpy(varChar, (char *) value + sizeof(int), length);
                 }
                 switch (compOp) {
                     case 0:
                         if (attr.type == 0) mark = intBuffer == intValue;
                         else if (attr.type == 1) mark = floatBuffer == floatValue;
-                        else mark = std::memcmp(data + 1 + sizeof(int), value, length) == 0;
+                        else mark = std::strcmp(varCharBuffer, varChar) == 0;
                         break;
                     case 1:
                         if (attr.type == 0) mark = intBuffer < intValue;
                         else if (attr.type == 1) mark = floatBuffer < floatValue;
-                        else mark = std::memcmp(data + 1 + sizeof(int), value, length) < 0;
+                        else mark = std::strcmp(varCharBuffer, varChar) < 0;
                         break;
                     case 2:
                         if (attr.type == 0) mark = intBuffer <= intValue;
                         else if (attr.type == 1) mark = floatBuffer <= floatValue;
-                        else mark = std::memcmp(data + 1 + sizeof(int), value, length) <= 0;
+                        else mark = std::strcmp(varCharBuffer, varChar) <= 0;
                         break;
                     case 3:
                         if (attr.type == 0) mark = intBuffer > intValue;
                         else if (attr.type == 1) mark = floatBuffer > floatValue;
-                        else mark = std::memcmp(data + 1 + sizeof(int), value, length) > 0;
+                        else mark = std::strcmp(varCharBuffer, varChar) > 0;
                         break;
                     case 4:
                         if (attr.type == 0) mark = intBuffer >= intValue;
                         else if (attr.type == 1) mark = floatBuffer >= floatValue;
-                        else mark = std::memcmp(data + 1 + sizeof(int), value, length) >= 0;
+                        else mark = std::strcmp(varCharBuffer, varChar) >= 0;
                         break;
                     case 5:
                         if (attr.type == 0) mark = intBuffer != intValue;
                         else if (attr.type == 1) mark = floatBuffer != floatValue;
-                        else mark = std::memcmp(data + 1 + sizeof(int), value, length) != 0;
+                        else mark = std::strcmp(varCharBuffer, varChar) != 0;
                         break;
                     default:
                         mark = true;
@@ -511,7 +523,8 @@ namespace PeterDB {
                 if (mark) rbfm_ScanIterator.rids.push_back(rid);
             }
         }
-
+        delete[] varCharBuffer;
+        delete[] varChar;
         return 0;
     }
 
