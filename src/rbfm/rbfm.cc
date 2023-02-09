@@ -395,7 +395,7 @@ namespace PeterDB {
         }
         const Attribute &attr = recordDescriptor[index];
 
-        unsigned short endPtr;
+        unsigned short endPtr = 0;
         std::memcpy(&endPtr, (char *) fileHandle.recordBuffer + 1 + (1 + index) * sizeof(unsigned short), sizeof(unsigned short));
         if (endPtr == 0) {
             unsigned char c = (unsigned char) 1 << 7;
