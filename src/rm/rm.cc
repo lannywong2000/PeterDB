@@ -1,5 +1,4 @@
 #include "src/include/rm.h"
-#include <iostream>
 
 namespace PeterDB {
     RelationManager &RelationManager::instance() {
@@ -159,7 +158,6 @@ namespace PeterDB {
             tableId = nextTableId > tableId ? nextTableId : tableId;
         }
         rm_ScanIterator.close();
-        std::cout << tableId + 1 << std::endl;
         return tableId + 1;
     }
 
@@ -191,7 +189,6 @@ namespace PeterDB {
         scan(tablesName, "table-name", EQ_OP, &tableName, attributeNames, rm_ScanIterator);
         RID rid;
         int tableId;
-        std::cout << rm_ScanIterator.rbfm_ScanIterator.rids.size() << std::endl;
         RC rc = rm_ScanIterator.getNextTuple(rid, tableIdBuffer);
         std::memcpy(&tableId, (char *) tableIdBuffer + 1, sizeof(int));
         rm_ScanIterator.close();
@@ -215,7 +212,6 @@ namespace PeterDB {
         if (tableName == tablesName) {attrs = getTablesAttrs(); return 0;}
         if (tableName == columnsName) {attrs = getColumnsAttrs(); return 0;}
         int tableId = getTableId(tableName);
-        std::cout << tableId << std::endl;
         RM_ScanIterator rm_ScanIterator;
         scan(columnsName, "table-id", EQ_OP, &tableId, getAttributeAttrs(), rm_ScanIterator);
 
