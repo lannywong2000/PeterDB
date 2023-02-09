@@ -99,6 +99,7 @@ namespace PeterDB {
     unsigned RecordBasedFileManager::findFreePage(FileHandle &fileHandle) {
         if (isCurrentPageFree(fileHandle)) return fileHandle.curPageNum;
         unsigned numberOfPages = fileHandle.getNumberOfPages();
+        /*
         for (unsigned pageNum = 0; pageNum < numberOfPages; pageNum++) {
             getPageBuffer(fileHandle, pageNum);
             unsigned short freeSpace = getFreeSpace(fileHandle);
@@ -106,6 +107,7 @@ namespace PeterDB {
             bool hasFreeSlot = getFreeSlotNum(fileHandle) != getNumberOfSlot(fileHandle);
             if (hasFreeSlot || fileHandle.recordLength + sizeof(Slot) <= freeSpace) return pageNum;
         }
+         */
         appendEmptyPage(fileHandle);
         return numberOfPages;
     }
