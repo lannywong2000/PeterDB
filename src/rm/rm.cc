@@ -212,6 +212,7 @@ namespace PeterDB {
     RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attribute> &attrs) {
         if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
         int tableId = getTableId(tableName);
+        std::cout << tableId << std::endl;
         RM_ScanIterator rm_ScanIterator;
         scan(columnsName, "table-id", EQ_OP, &tableId, getAttributeAttrs(), rm_ScanIterator);
 
