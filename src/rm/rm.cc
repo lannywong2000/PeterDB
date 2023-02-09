@@ -1,4 +1,5 @@
 #include "src/include/rm.h"
+#include <iostream>
 
 namespace PeterDB {
     RelationManager &RelationManager::instance() {
@@ -135,6 +136,7 @@ namespace PeterDB {
         RM_ScanIterator rm_ScanIterator;
         std::vector<std::string> attributeNames = {"table-id"};
         scan(tablesName, "table-name", EQ_OP, &tableName, attributeNames, rm_ScanIterator);
+        std::cout << rm_ScanIterator.rbfm_ScanIterator.rids.size() << std::endl;
         RID rid;
         int tableId;
         rm_ScanIterator.getNextTuple(rid, tableIdBuffer);
