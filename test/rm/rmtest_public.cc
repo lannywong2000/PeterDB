@@ -58,6 +58,8 @@ namespace PeterDBTesting {
         // Functions Tested
         // 1. getAttributes
 
+        std::cout << tableName << std::endl;
+
         // GetAttributes
         ASSERT_EQ(rm.getAttributes(tableName, attrs), success) << "RelationManager::getAttributes() should succeed.";
 
