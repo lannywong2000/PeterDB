@@ -220,8 +220,8 @@ namespace PeterDB {
         while (rm_ScanIterator.getNextTuple(rid, attributesBuffer) != RM_EOF) {
             std::memcpy(&attributeNameLength, (char *) attributesBuffer + 1, sizeof(int));
             std::memcpy(&position, (char *) attributesBuffer + 1 + 3 * sizeof(int) + attributeNameLength, sizeof(int));
-            char attributeName[attributeNameLength];
-            std::memset(attributeName, 0, attributeNameLength);
+            char attributeName[attributeNameLength + 1];
+            std::memset(attributeName, 0, attributeNameLength + 1);
             std::memcpy(attributeName, (char *) attributesBuffer + 1 + sizeof(int), attributeNameLength);
             attrs[position - 1].name = std::string(attributeName);
             std::memcpy(&attrs[position - 1].type, (char *) attributesBuffer + 1 + sizeof(int) + attributeNameLength, sizeof(int));
