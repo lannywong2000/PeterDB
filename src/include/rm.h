@@ -84,7 +84,7 @@ namespace PeterDB {
 
         RC deleteTable(const std::string &tableName);
 
-        RC getVersionedAttributes(const std::string &tableName, std::vector<Attribute> &attrs, int version);
+        RC getVersionedAttributes(const std::string &tableName, int version, std::vector<Attribute> &attrs, std::vector<int> &positions);
 
         RC getAttributes(const std::string &tableName, std::vector<Attribute> &attrs);
 
@@ -111,7 +111,7 @@ namespace PeterDB {
                 const std::vector<std::string> &attributeNames, // a list of projected attributes
                 RM_ScanIterator &rm_ScanIterator);
 
-        RC fromVersion(const std::string &tableName, int recordVersion, const void *recordBuffer, int recordLength, void* data);
+        void convert(const std::string &tableName, int fromVersion, int toVersion, const void *dataBuffer, int dataBufferLength, void* data);
 
         // Extra credit work (10 points)
         RC addAttribute(const std::string &tableName, const Attribute &attr);

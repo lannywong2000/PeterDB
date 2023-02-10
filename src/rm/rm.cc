@@ -233,7 +233,7 @@ namespace PeterDB {
     }
 
     RC
-    RelationManager::getVersionedAttributes(const std::string &tableName, std::vector<Attribute> &attrs, int targetVersion) {
+    RelationManager::getVersionedAttributes(const std::string &tableName, int targetVersion, std::vector<Attribute> &attrs, std::vector<int> &positions) {
         int tableId = getTableId(tableName);
         RM_ScanIterator rm_ScanIterator;
         scan(columnsName, "table-id", EQ_OP, &tableId, getAttributeAttrs(), rm_ScanIterator);
@@ -255,6 +255,7 @@ namespace PeterDB {
             std::memcpy(&type, (char *) attributesBuffer + 1 + 2 * sizeof(int) + attributeNameLength, sizeof(int));
             std::memcpy(&length, (char *) attributesBuffer + 1 + 3 * sizeof(int) + attributeNameLength, sizeof(int));
             attrs.emplace_back(name, type, length);
+            positions.push_back(position);
         }
 
         rm_ScanIterator.close();
@@ -268,7 +269,8 @@ namespace PeterDB {
         if (tableName == columnsName) {attrs = getColumnsAttrs(); return 0;}
         FileHandle fileHandle;
         rbfm.openFile(getFileName(tableName), fileHandle);
-        RC rc = getVersionedAttributes(tableName, attrs, fileHandle.version);
+        std::vector<int> positions;
+        RC rc = getVersionedAttributes(tableName, fileHandle.version, attrs, positions);
         rbfm.closeFile(fileHandle);
         return rc;
     }
@@ -317,31 +319,69 @@ namespace PeterDB {
         return size;
     }
 
-    RC RelationManager::fromVersion(const std::string &tableName, int recordVersion, const void *recordBuffer, int recordLength, void *data) {
-        FileHandle fileHandle;
-        rbfm.openFile(getFileName(tableName), fileHandle);
-        int version = fileHandle.version;
-        rbfm.closeFile(fileHandle);
-        if (recordVersion == version) {
-            std::memcpy(data, recordBuffer, recordLength);
-            return 0;
+    void RelationManager::convert(const std::string &tableName, int fromVersion, int toVersion, const void *dataBuffer,
+                                int dataBufferLength, void *data) {
+        if (fromVersion == toVersion) {
+            std::memcpy(data, dataBuffer, dataBufferLength);
+            return;
         }
-        return -1;
+
+        std::vector<Attribute> fromAttrs, toAttrs;
+        std::vector<int> fromPositions, toPositions;
+
+        getVersionedAttributes(tableName, fromVersion, fromAttrs, fromPositions);
+        getVersionedAttributes(tableName, toVersion, toAttrs, toPositions);
+
+        int fromAttrsLength = fromAttrs.size(), toAttrsLength = toAttrs.size();
+        int fromBitmapBytes = fromAttrsLength % 8 == 0 ? fromAttrsLength / 8 : fromAttrsLength / 8 + 1;
+        int toBitmapBytes = toAttrsLength % 8 == 0 ? toAttrsLength / 8 : toAttrsLength / 8 + 1;
+        char fromBitmap[fromBitmapBytes], toBitmap[toBitmapBytes];
+        std::memcpy(fromBitmap, dataBuffer, fromBitmapBytes);
+        std::memset(toBitmap, 0, toBitmapBytes);
+
+        int toPtr = toBitmapBytes;
+        for (int toIndex = 0; toIndex < toAttrsLength; toIndex = toIndex + 1) {
+            int fromIndex = 0, fromPtr = fromBitmapBytes;
+            while (fromIndex < fromAttrsLength) {
+                if (fromPositions[fromIndex] == toPositions[toIndex]) break;
+                if (fromBitmap[fromIndex / 8] >> (7 - fromIndex % 8) & (unsigned) 1) continue;
+                if (fromAttrs[fromIndex].type == 2) {
+                    int varCharLength;
+                    std::memcpy(&varCharLength, (char *) dataBuffer + fromPtr, sizeof(int));
+                    fromPtr = fromPtr + varCharLength;
+                }
+                fromPtr = fromPtr + sizeof(int);
+                fromIndex = fromIndex + 1;
+            }
+            if (fromIndex >= fromAttrsLength || fromBitmap[fromIndex / 8] >> (7 - fromIndex % 8) & (unsigned) 1) {
+                toBitmap[toIndex / 8] |= (unsigned) 1 << (7 - toIndex % 8);
+                continue;
+            }
+            int length = 0;
+            if (fromAttrs[fromIndex].type == 2) std::memcpy(&length, (char *) dataBuffer + fromPtr, sizeof(int));
+            length = length + sizeof(int);
+            std::memcpy((char *) data + toPtr, (char *) dataBuffer + fromPtr, length);
+            toPtr = toPtr + length;
+        }
+        std::memcpy(data, toBitmap, toBitmapBytes);
     }
 
     RC RelationManager::readTuple(const std::string &tableName, const RID &rid, void *data) {
         if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
         FileHandle fileHandle;
         rbfm.openFile(getFileName(tableName), fileHandle);
+        int version = fileHandle.version;
         std::vector<Attribute> attrs;
         int recordVersion = rbfm.getRecordVersion(fileHandle, rid);
-        getVersionedAttributes(tableName, attrs, recordVersion);
+        std::vector<int> positions;
+        getVersionedAttributes(tableName, recordVersion, attrs, positions);
         int recordLength = calculateDataBufferSize(attrs);
         char recordBuffer[recordLength];
         RC rc = rbfm.readRecord(fileHandle, attrs, rid, recordBuffer);
         rbfm.closeFile(fileHandle);
         if (rc != 0) return rc;
-        return fromVersion(tableName, recordVersion, recordBuffer, recordLength, data);
+        convert(tableName, recordVersion, version, recordBuffer, recordLength, data);
+        return 0;
     }
 
     RC RelationManager::printTuple(const std::vector<Attribute> &attrs, const void *data, std::ostream &out) {
