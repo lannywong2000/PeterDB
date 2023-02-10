@@ -78,7 +78,7 @@ namespace PeterDB {
 
         int generatePosition(int tableId);
 
-        int calculateDataBufferSize(const std::vector<Attribute> &attrs);
+        int getDataBufferSize(const std::vector<Attribute> &attrs);
 
         RC createTable(const std::string &tableName, const std::vector<Attribute> &attrs);
 

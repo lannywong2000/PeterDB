@@ -2,12 +2,11 @@
 
 
 ### 1. Basic information
- - Team #:
- - Github Repo Link:
- - Student 1 UCI NetID:
- - Student 1 Name:
- - Student 2 UCI NetID (if applicable):
- - Student 2 Name (if applicable):
+- Github Repo Link: https://github.com/UCI-Chenli-teaching/cs222p-winter23-lannywong2000
+- Student UCI ID: 38242300
+- Student UCI NetID: ruoyuw15
+- Student Name: Lanny Wang
+
 
 ### 2. Meta-data
 - Show your meta-data design (Tables and Columns table) and information about each column.
@@ -75,12 +74,7 @@
 
 
 
-### 8. Member contribution (for team of two)
-- Explain how you distribute the workload in team.
-
-
-
-### 9. Other (optional)
+### 8. Other (optional)
 - Freely use this section to tell us about things that are related to the project 1, but not related to the other sections (optional)
 
 

@@ -2,8 +2,9 @@
 
 
 ### 1. Basic information
- - Github Repo Link: https://github.com/UCI-Chenli-teaching/cs222p-winter23-lannywong2000/blob/main/src/include/rbfm.h
- - Student UCI NetID: 38242300
+ - Github Repo Link: https://github.com/UCI-Chenli-teaching/cs222p-winter23-lannywong2000
+ - Student UCI ID: 38242300
+ - Student UCI NetID: ruoyuw15
  - Student Name: Lanny Wang
 
 

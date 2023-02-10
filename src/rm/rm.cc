@@ -175,12 +175,12 @@ namespace PeterDB {
 
     int RelationManager::generatePosition(int tableId) {
         RM_ScanIterator rm_ScanIterator;
-        std::vector<std::string> attributeNames = {"table-version"};
+        std::vector<std::string> attributeNames = {"column-position"};
         scan(columnsName, "table-id", EQ_OP, &tableId, attributeNames, rm_ScanIterator);
         RID rid;
         int position = 0, nextPosition;
         while (rm_ScanIterator.getNextTuple(rid, positionBuffer) != RM_EOF) {
-            std::memcpy(&nextPosition, (char *) tableIdBuffer + 1, sizeof(int));
+            std::memcpy(&nextPosition, (char *) positionBuffer + 1, sizeof(int));
             position = nextPosition > position ? nextPosition : position;
         }
         rm_ScanIterator.close();
@@ -310,7 +310,7 @@ namespace PeterDB {
         return rc;
     }
 
-    int RelationManager::calculateDataBufferSize(const std::vector<Attribute> &attrs) {
+    int RelationManager::getDataBufferSize(const std::vector<Attribute> &attrs) {
         int attrNum = attrs.size(), size = attrNum % 8 == 0 ? attrNum / 8 : attrNum / 8 + 1;
         for (const Attribute &attr : attrs) {
             size = size + attr.length;
@@ -344,7 +344,10 @@ namespace PeterDB {
             int fromIndex = 0, fromPtr = fromBitmapBytes;
             while (fromIndex < fromAttrsLength) {
                 if (fromPositions[fromIndex] == toPositions[toIndex]) break;
-                if (fromBitmap[fromIndex / 8] >> (7 - fromIndex % 8) & (unsigned) 1) continue;
+                if (fromBitmap[fromIndex / 8] >> (7 - fromIndex % 8) & (unsigned) 1) {
+                    fromIndex = fromIndex + 1;
+                    continue;
+                }
                 if (fromAttrs[fromIndex].type == 2) {
                     int varCharLength;
                     std::memcpy(&varCharLength, (char *) dataBuffer + fromPtr, sizeof(int));
@@ -375,7 +378,7 @@ namespace PeterDB {
         int recordVersion = rbfm.getRecordVersion(fileHandle, rid);
         std::vector<int> positions;
         getVersionedAttributes(tableName, recordVersion, attrs, positions);
-        int recordLength = calculateDataBufferSize(attrs);
+        int recordLength = getDataBufferSize(attrs);
         char recordBuffer[recordLength];
         RC rc = rbfm.readRecord(fileHandle, attrs, rid, recordBuffer);
         rbfm.closeFile(fileHandle);
@@ -391,12 +394,42 @@ namespace PeterDB {
     RC RelationManager::readAttribute(const std::string &tableName, const RID &rid, const std::string &attributeName,
                                       void *data) {
         if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
-        std::vector<Attribute> attrs;
-        getAttributes(tableName, attrs);
+
         FileHandle fileHandle;
         rbfm.openFile(getFileName(tableName), fileHandle);
-        RC rc = rbfm.readAttribute(fileHandle, attrs, rid, attributeName, data);
+        int recordVersion = rbfm.getRecordVersion(fileHandle, rid);
+        int curVersion = fileHandle.version;
         rbfm.closeFile(fileHandle);
+
+        std::vector<Attribute> recordAttrs, curAttrs;
+        std::vector<int> recordPositions, curPositions;
+
+        getVersionedAttributes(tableName, recordVersion, recordAttrs, recordPositions);
+        getVersionedAttributes(tableName, curVersion, curAttrs, curPositions);
+
+        int curIndex = 0;
+        while (curIndex < curAttrs.size()) {
+            if (curAttrs[curIndex].name == attributeName) break;
+            curIndex = curIndex + 1;
+        }
+        if (curIndex >= curAttrs.size()) return ERR_ATTRIBUTE_NOT_EXISTS;
+
+        int recordIndex = 0;
+        while (recordIndex < recordAttrs.size()) {
+            if (recordPositions[recordIndex] == curPositions[curIndex]) break;
+            recordIndex = recordIndex + 1;
+        }
+
+        if (recordIndex >= recordAttrs.size()) {
+            unsigned char c = (unsigned char) 1 << 7;
+            std::memcpy(data, &c, 1);
+            return 0;
+        }
+
+        rbfm.openFile(getFileName(tableName), fileHandle);
+        RC rc = rbfm.readAttribute(fileHandle, recordAttrs, rid, attributeName, data);
+        rbfm.closeFile(fileHandle);
+
         return rc;
     }
 
