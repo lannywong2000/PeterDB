@@ -27,8 +27,8 @@ namespace PeterDB {
         if (pFile == nullptr) return ERR_FILE_CREATE_FAILED;
         void *pageBuffer = malloc(PAGE_SIZE);
         memset(pageBuffer, 0, PAGE_SIZE);
-        unsigned buffer[4] = {0};
-        std::memcpy(pageBuffer, buffer, sizeof(unsigned) * 4);
+        unsigned buffer[5] = {0};
+        std::memcpy(pageBuffer, buffer, sizeof(unsigned) * 5);
         fwrite(pageBuffer, sizeof(char), PAGE_SIZE, pFile);
         free(pageBuffer);
         fclose(pFile);
@@ -46,13 +46,14 @@ namespace PeterDB {
         FILE *pFile = fopen(fileName.c_str(), "r+b");
         if (pFile == nullptr) return ERR_FILE_OPEN_FAILED;
         fseek(pFile, 0, SEEK_SET);
-        unsigned buffer[4];
-        if (fread(buffer, sizeof(unsigned), 4, pFile) == 4) {
+        unsigned buffer[5];
+        if (fread(buffer, sizeof(unsigned), 5, pFile) == 5) {
             fileHandle.pFile = pFile;
             fileHandle.numberOfPages = buffer[0];
             fileHandle.readPageCounter = buffer[1];
             fileHandle.writePageCounter = buffer[2];
             fileHandle.appendPageCounter = buffer[3];
+            fileHandle.version = buffer[4];
             fileHandle.pageBuffer = malloc(PAGE_SIZE);
             fileHandle.recordBuffer = malloc(RECORD_SIZE);
             memset(fileHandle.pageBuffer, 0, PAGE_SIZE);
@@ -78,8 +79,8 @@ namespace PeterDB {
     RC FileHandle::closeFile() {
         if (pFile == nullptr) return 0;
         fseek(pFile, 0, SEEK_SET);
-        unsigned buffer[4] = {numberOfPages, readPageCounter, writePageCounter, appendPageCounter};
-        fwrite(buffer, sizeof(unsigned), 4, pFile);
+        unsigned buffer[5] = {numberOfPages, readPageCounter, writePageCounter, appendPageCounter, version};
+        fwrite(buffer, sizeof(unsigned), 5, pFile);
 
         free(pageBuffer);
         free(recordBuffer);

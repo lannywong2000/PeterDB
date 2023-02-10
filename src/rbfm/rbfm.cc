@@ -122,19 +122,20 @@ namespace PeterDB {
         char bitmaps[numberOfNullBytes];
         std::memcpy(bitmaps, (char *) data, numberOfNullBytes);
 
-        fileHandle.recordLength = 1 + (numberOfAttributes + 1) * sizeof(unsigned short);
+        fileHandle.recordLength = 1 + sizeof(unsigned) + (numberOfAttributes + 1) * sizeof(unsigned short);
 
-        std::memcpy((char *) fileHandle.recordBuffer + 1, &numberOfAttributes, sizeof(unsigned short));
+        std::memcpy((char *) fileHandle.recordBuffer + 1, &fileHandle.version, sizeof(unsigned));
+        std::memcpy((char *) fileHandle.recordBuffer + 1 + sizeof(unsigned), &numberOfAttributes, sizeof(unsigned short));
 
         int length;
         unsigned pData = numberOfNullBytes;
-        unsigned short pRecord = 1 + (numberOfAttributes + 1) * sizeof(unsigned short);
+        unsigned short pRecord = 1 + sizeof(unsigned) + (numberOfAttributes + 1) * sizeof(unsigned short);
         for (unsigned indexOfAttribute = 0; indexOfAttribute < numberOfAttributes; indexOfAttribute++) {
             const Attribute &attr = recordDescriptor[indexOfAttribute];
             unsigned indexOfBitmap = indexOfAttribute / 8;
             unsigned offsetOfBitmap = indexOfAttribute % 8;
             if (bitmaps[indexOfBitmap] >> (7 - offsetOfBitmap) & (unsigned) 1) {
-                std::memset((char *) fileHandle.recordBuffer + 1 + (indexOfAttribute + 1) * sizeof(unsigned short), 0, sizeof(unsigned short));
+                std::memset((char *) fileHandle.recordBuffer + 1 + sizeof(unsigned) + (indexOfAttribute + 1) * sizeof(unsigned short), 0, sizeof(unsigned short));
                 continue;
             }
             if (attr.type == 0) {
@@ -155,7 +156,7 @@ namespace PeterDB {
                 pRecord = pRecord + length;
                 pData = pData + length;
             }
-            std::memcpy((char *) fileHandle.recordBuffer + 1 + (indexOfAttribute + 1) * sizeof(unsigned short), &pRecord, sizeof(unsigned short));
+            std::memcpy((char *) fileHandle.recordBuffer + 1 + sizeof(unsigned) + (indexOfAttribute + 1) * sizeof(unsigned short), &pRecord, sizeof(unsigned short));
         }
 
         fileHandle.recordLength = fileHandle.recordLength < 7 ? 7 : fileHandle.recordLength;
@@ -213,14 +214,14 @@ namespace PeterDB {
 
         unsigned short offset;
         unsigned short pData = numberOfNullBytes;
-        unsigned short pRecord = 1 + (numberOfAttributes + 1) * sizeof(unsigned short);
+        unsigned short pRecord = 1 + sizeof(unsigned) + (numberOfAttributes + 1) * sizeof(unsigned short);
         unsigned short prev = pRecord;
         int length;
         for (unsigned indexOfAttribute = 0; indexOfAttribute < numberOfAttributes; indexOfAttribute++) {
             const Attribute &attr = recordDescriptor[indexOfAttribute];
             unsigned indexOfBitmap = indexOfAttribute / 8;
             unsigned offsetOfBitmap = indexOfAttribute % 8;
-            std::memcpy(&offset, (char *) fileHandle.recordBuffer + 1 + (1 + indexOfAttribute) * sizeof(unsigned short), sizeof(unsigned short));
+            std::memcpy(&offset, (char *) fileHandle.recordBuffer + 1 + sizeof(unsigned) + (1 + indexOfAttribute) * sizeof(unsigned short), sizeof(unsigned short));
             if (offset == 0) {
                 bitmaps[indexOfBitmap] |= (unsigned) 1 << (7 - offsetOfBitmap);
                 continue;
@@ -247,6 +248,17 @@ namespace PeterDB {
         std::memcpy((char *) data, bitmaps, numberOfNullBytes);
 
         return 0;
+    }
+
+    void RecordBasedFileManager::increaseVersion(FileHandle &fileHandle) {
+        fileHandle.version = fileHandle.version + 1;
+    }
+
+    int RecordBasedFileManager::getRecordVersion(FileHandle &fileHandle, const RID &rid) {
+        getRecordBuffer(fileHandle, rid, true);
+        unsigned version = 0;
+        std::memcpy(&version, (char *) fileHandle.recordBuffer + 1, sizeof(unsigned));
+        return version;
     }
 
     RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
@@ -399,7 +411,7 @@ namespace PeterDB {
         const Attribute &attr = recordDescriptor[index];
 
         unsigned short endPtr = 0;
-        std::memcpy(&endPtr, (char *) fileHandle.recordBuffer + 1 + (1 + index) * sizeof(unsigned short), sizeof(unsigned short));
+        std::memcpy(&endPtr, (char *) fileHandle.recordBuffer + 1 + sizeof(unsigned) + (1 + index) * sizeof(unsigned short), sizeof(unsigned short));
         if (endPtr == 0) {
             unsigned char c = (unsigned char) 1 << 7;
             std::memcpy(data, &c, 1);
@@ -407,10 +419,10 @@ namespace PeterDB {
             std::memset(data, 0 , 1);
             unsigned short startPtr = 0;
             while (--index >= 0) {
-                std::memcpy(&startPtr, (char *) fileHandle.recordBuffer + 1 + (1 + index) * sizeof(unsigned short), sizeof(unsigned short));
+                std::memcpy(&startPtr, (char *) fileHandle.recordBuffer + 1 + sizeof(unsigned) + (1 + index) * sizeof(unsigned short), sizeof(unsigned short));
                 if (startPtr != 0) break;
             }
-            if (startPtr == 0) startPtr = 1 + (1 + recordDescriptor.size()) * sizeof(unsigned short);
+            if (startPtr == 0) startPtr = 1 + sizeof(unsigned) + (1 + recordDescriptor.size()) * sizeof(unsigned short);
             if (attr.type == 2) {
                 int length = endPtr - startPtr;
                 std::memcpy((char *) data + 1, &length, sizeof(int));

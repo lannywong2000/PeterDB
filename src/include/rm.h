@@ -43,7 +43,7 @@ namespace PeterDB {
     // Relation Manager
     class RelationManager {
     private:
-        void *tableIdBuffer, *attributesBuffer;
+        void *tableIdBuffer, *attributesBuffer, *positionBuffer;
 
         static std::vector<Attribute> getTablesAttrs();
 
@@ -58,7 +58,11 @@ namespace PeterDB {
 
         bool checkTableExists(const std::string &tableName);
 
+        int increaseTableVersion(const std::string &tableName);
+
         RC insertTables(FileHandle &tablesHandle, int tableId, const std::string &tableName);
+
+        RC insertColumn(FileHandle &columnsHandle, int tableId, const Attribute &attr, int position, int version);
 
         RC insertColumns(FileHandle &columnsHandle, int tableId, const std::vector<Attribute> &attrs);
 
@@ -72,9 +76,15 @@ namespace PeterDB {
 
         int generateTableId();
 
+        int generatePosition(int tableId);
+
+        int calculateDataBufferSize(const std::vector<Attribute> &attrs);
+
         RC createTable(const std::string &tableName, const std::vector<Attribute> &attrs);
 
         RC deleteTable(const std::string &tableName);
+
+        RC getVersionedAttributes(const std::string &tableName, std::vector<Attribute> &attrs, int version);
 
         RC getAttributes(const std::string &tableName, std::vector<Attribute> &attrs);
 
@@ -100,6 +110,8 @@ namespace PeterDB {
                 const void *value,                    // used in the comparison
                 const std::vector<std::string> &attributeNames, // a list of projected attributes
                 RM_ScanIterator &rm_ScanIterator);
+
+        RC fromVersion(const std::string &tableName, int recordVersion, const void *recordBuffer, int recordLength, void* data);
 
         // Extra credit work (10 points)
         RC addAttribute(const std::string &tableName, const Attribute &attr);

@@ -9,13 +9,16 @@ namespace PeterDB {
     RelationManager::RelationManager() {
         tableIdBuffer = malloc(5);
         std::memset(tableIdBuffer, 0, 5);
-        attributesBuffer = malloc(67);
-        std::memset(attributesBuffer, 0, 67);
+        attributesBuffer = malloc(75);
+        std::memset(attributesBuffer, 0, 75);
+        positionBuffer = malloc(5);
+        std::memset(positionBuffer, 0, 5);
     }
 
     RelationManager::~RelationManager() {
         free(tableIdBuffer);
         free(attributesBuffer);
+        free(positionBuffer);
     }
 
     RelationManager::RelationManager(const RelationManager &) = default;
@@ -39,11 +42,12 @@ namespace PeterDB {
         columnsAttrs.emplace_back("column-type", TypeInt, 4);
         columnsAttrs.emplace_back("column-length", TypeInt, 4);
         columnsAttrs.emplace_back("column-position", TypeInt, 4);
+        columnsAttrs.emplace_back("table-version", TypeInt, 4);
         return columnsAttrs;
     }
 
     std::vector<std::string> RelationManager::getAttributeAttrs() {
-        std::vector<std::string> attributeAttrs = {"column-name", "column-type", "column-length", "column-position"};
+        std::vector<std::string> attributeAttrs = {"table-id", "column-name", "column-type", "column-length", "column-position", "table-version"};
         return attributeAttrs;
     }
 
@@ -68,21 +72,27 @@ namespace PeterDB {
         return rc;
     }
 
-    RC RelationManager::insertColumns(FileHandle &columnsHandle, int tableId, const std::vector<Attribute> &attrs) {
+    RC RelationManager::insertColumn(FileHandle &columnsHandle, int tableId, const Attribute &attr, int position,
+                                     int version) {
         RID rid;
+        int attrNameLength = attr.name.size();
+        char data[1 + 6 * sizeof(int) + attrNameLength];
+        std::memset(data, 0, 1);
+        std::memcpy(data + 1, &tableId, sizeof(int));
+        std::memcpy(data + 1 + sizeof(int), &attrNameLength, sizeof(int));
+        std::memcpy(data + 1 + 2 * sizeof(int), attr.name.c_str(), attrNameLength);
+        std::memcpy(data + 1 + 2 * sizeof(int) + attrNameLength, &attr.type, sizeof(int));
+        std::memcpy(data + 1 + 3 * sizeof(int) + attrNameLength, &attr.length, sizeof(int));
+        std::memcpy(data + 1 + 4 * sizeof(int) + attrNameLength, &position, sizeof(int));
+        std::memcpy(data + 1 + 5 * sizeof(int) + attrNameLength, &version, sizeof(int));
+        return rbfm.insertRecord(columnsHandle, getColumnsAttrs(), data, rid);
+    }
+
+    RC RelationManager::insertColumns(FileHandle &columnsHandle, int tableId, const std::vector<Attribute> &attrs) {
+        RC rc;
         int attrsLength = attrs.size();
         for (int pos = 1; pos <= attrsLength; pos = pos + 1) {
-            const Attribute &attr = attrs[pos - 1];
-            int attrNameLength = attr.name.size();
-            char data[1 + 5 * sizeof(int) + attrNameLength];
-            std::memset(data, 0, 1);
-            std::memcpy(data + 1, &tableId, sizeof(int));
-            std::memcpy(data + 1 + sizeof(int), &attrNameLength, sizeof(int));
-            std::memcpy(data + 1 + 2 * sizeof(int), attr.name.c_str(), attrNameLength);
-            std::memcpy(data + 1 + 2 * sizeof(int) + attrNameLength, &attr.type, sizeof(int));
-            std::memcpy(data + 1 + 3 * sizeof(int) + attrNameLength, &attr.length, sizeof(int));
-            std::memcpy(data + 1 + 4 * sizeof(int) + attrNameLength, &pos, sizeof(int));
-            RC rc = rbfm.insertRecord(columnsHandle, getColumnsAttrs(), data, rid);
+            rc = insertColumn(columnsHandle, tableId, attrs[pos - 1], pos, 0);
             if (rc != 0) return rc;
         }
         return 0;
@@ -163,6 +173,20 @@ namespace PeterDB {
         return tableId + 1;
     }
 
+    int RelationManager::generatePosition(int tableId) {
+        RM_ScanIterator rm_ScanIterator;
+        std::vector<std::string> attributeNames = {"table-version"};
+        scan(columnsName, "table-id", EQ_OP, &tableId, attributeNames, rm_ScanIterator);
+        RID rid;
+        int position = 0, nextPosition;
+        while (rm_ScanIterator.getNextTuple(rid, positionBuffer) != RM_EOF) {
+            std::memcpy(&nextPosition, (char *) tableIdBuffer + 1, sizeof(int));
+            position = nextPosition > position ? nextPosition : position;
+        }
+        rm_ScanIterator.close();
+        return position + 1;
+    }
+
     RC RelationManager::createTable(const std::string &tableName, const std::vector<Attribute> &attrs) {
         if (!checkTableExists(tablesName)) return ERR_CATALOG_NOT_EXISTS;
         if (checkTableExists(tableName)) return ERR_TABLE_NAME_EXISTS;
@@ -208,31 +232,45 @@ namespace PeterDB {
         return rbfm.destroyFile(getFileName(tableName));
     }
 
-    RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attribute> &attrs) {
-        if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
-        if (tableName == tablesName) {attrs = getTablesAttrs(); return 0;}
-        if (tableName == columnsName) {attrs = getColumnsAttrs(); return 0;}
+    RC
+    RelationManager::getVersionedAttributes(const std::string &tableName, std::vector<Attribute> &attrs, int targetVersion) {
         int tableId = getTableId(tableName);
         RM_ScanIterator rm_ScanIterator;
         scan(columnsName, "table-id", EQ_OP, &tableId, getAttributeAttrs(), rm_ScanIterator);
 
         RID rid;
-        int attributeNameLength, position;
-        attrs = std::vector<Attribute>(rm_ScanIterator.rbfm_ScanIterator.rids.size());
+        int attributeNameLength, position, version;
+        std::string name;
+        AttrType type;
+        AttrLength length;
         while (rm_ScanIterator.getNextTuple(rid, attributesBuffer) != RM_EOF) {
-            std::memcpy(&attributeNameLength, (char *) attributesBuffer + 1, sizeof(int));
-            std::memcpy(&position, (char *) attributesBuffer + 1 + 3 * sizeof(int) + attributeNameLength, sizeof(int));
+            std::memcpy(&attributeNameLength, (char *) attributesBuffer + 1 + sizeof(int), sizeof(int));
+            std::memcpy(&version, (char *) attributesBuffer + 1 + 5 * sizeof(int) + attributeNameLength, sizeof(int));
+            if (version != targetVersion) continue;
+            std::memcpy(&position, (char *) attributesBuffer + 1 + 4 * sizeof(int) + attributeNameLength, sizeof(int));
             char attributeName[attributeNameLength + 1];
             std::memset(attributeName, 0, attributeNameLength + 1);
-            std::memcpy(attributeName, (char *) attributesBuffer + 1 + sizeof(int), attributeNameLength);
-            attrs[position - 1].name = std::string(attributeName);
-            std::memcpy(&attrs[position - 1].type, (char *) attributesBuffer + 1 + sizeof(int) + attributeNameLength, sizeof(int));
-            std::memcpy(&attrs[position - 1].length, (char *) attributesBuffer + 1 + 2 * sizeof(int) + attributeNameLength, sizeof(int));
+            std::memcpy(attributeName, (char *) attributesBuffer + 1 + 2 * sizeof(int), attributeNameLength);
+            name = std::string(attributeName);
+            std::memcpy(&type, (char *) attributesBuffer + 1 + 2 * sizeof(int) + attributeNameLength, sizeof(int));
+            std::memcpy(&length, (char *) attributesBuffer + 1 + 3 * sizeof(int) + attributeNameLength, sizeof(int));
+            attrs.emplace_back(name, type, length);
         }
 
         rm_ScanIterator.close();
 
         return 0;
+    }
+
+    RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attribute> &attrs) {
+        if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
+        if (tableName == tablesName) {attrs = getTablesAttrs(); return 0;}
+        if (tableName == columnsName) {attrs = getColumnsAttrs(); return 0;}
+        FileHandle fileHandle;
+        rbfm.openFile(getFileName(tableName), fileHandle);
+        RC rc = getVersionedAttributes(tableName, attrs, fileHandle.version);
+        rbfm.closeFile(fileHandle);
+        return rc;
     }
 
     RC RelationManager::insertTuple(const std::string &tableName, const void *data, RID &rid) {
@@ -270,15 +308,40 @@ namespace PeterDB {
         return rc;
     }
 
-    RC RelationManager::readTuple(const std::string &tableName, const RID &rid, void *data) {
-        if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
-        std::vector<Attribute> attrs;
-        getAttributes(tableName, attrs);
+    int RelationManager::calculateDataBufferSize(const std::vector<Attribute> &attrs) {
+        int attrNum = attrs.size(), size = attrNum % 8 == 0 ? attrNum / 8 : attrNum / 8 + 1;
+        for (const Attribute &attr : attrs) {
+            size = size + attr.length;
+            if (attr.type == 2) size = size + sizeof(int);
+        }
+        return size;
+    }
+
+    RC RelationManager::fromVersion(const std::string &tableName, int recordVersion, const void *recordBuffer, int recordLength, void *data) {
         FileHandle fileHandle;
         rbfm.openFile(getFileName(tableName), fileHandle);
-        RC rc = rbfm.readRecord(fileHandle, attrs, rid, data);
+        int version = fileHandle.version;
         rbfm.closeFile(fileHandle);
-        return rc;
+        if (recordVersion == version) {
+            std::memcpy(data, recordBuffer, recordLength);
+            return 0;
+        }
+        return -1;
+    }
+
+    RC RelationManager::readTuple(const std::string &tableName, const RID &rid, void *data) {
+        if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
+        FileHandle fileHandle;
+        rbfm.openFile(getFileName(tableName), fileHandle);
+        std::vector<Attribute> attrs;
+        int recordVersion = rbfm.getRecordVersion(fileHandle, rid);
+        getVersionedAttributes(tableName, attrs, recordVersion);
+        int recordLength = calculateDataBufferSize(attrs);
+        char recordBuffer[recordLength];
+        RC rc = rbfm.readRecord(fileHandle, attrs, rid, recordBuffer);
+        rbfm.closeFile(fileHandle);
+        if (rc != 0) return rc;
+        return fromVersion(tableName, recordVersion, recordBuffer, recordLength, data);
     }
 
     RC RelationManager::printTuple(const std::vector<Attribute> &attrs, const void *data, std::ostream &out) {
@@ -324,14 +387,84 @@ namespace PeterDB {
         return rbfm_ScanIterator.close();
     }
 
+    int RelationManager::increaseTableVersion(const std::string &tableName) {
+        FileHandle fileHandle;
+        rbfm.openFile(getFileName(tableName), fileHandle);
+        rbfm.increaseVersion(fileHandle);
+        int version = fileHandle.version;
+        rbfm.closeFile(fileHandle);
+        return version;
+    }
+
     // Extra credit work
     RC RelationManager::dropAttribute(const std::string &tableName, const std::string &attributeName) {
-        return -1;
+        if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
+        std::vector<Attribute> attrs;
+        getAttributes(tableName, attrs);
+        int newVersion = increaseTableVersion(tableName);
+
+        int tableId = getTableId(tableName);
+
+        FileHandle columnsHandle;
+        rbfm.openFile(columnsName, columnsHandle);
+
+        RC rc;
+        RM_ScanIterator rm_ScanIterator;
+        scan(columnsName, "table-id", EQ_OP, &tableId, getAttributeAttrs(), rm_ScanIterator);
+        RID rid;
+        std::string name;
+        int attributeNameLength, version;
+        while (rm_ScanIterator.getNextTuple(rid, attributesBuffer) != RM_EOF) {
+            std::memcpy(&attributeNameLength, (char *) attributesBuffer + 1 + sizeof(int), sizeof(int));
+            std::memcpy(&version, (char *) attributesBuffer + 1 + 5 * sizeof(int) + attributeNameLength, sizeof(int));
+            char nameBuffer[attributeNameLength + 1];
+            std::memset(nameBuffer, 0, attributeNameLength + 1);
+            std::memcpy(nameBuffer, (char *) attributesBuffer + 1 + 2 * sizeof(int), attributeNameLength);
+            name = std::string(nameBuffer);
+            if (version != newVersion - 1 || name == attributeName) continue;
+            std::memcpy((char *) attributesBuffer + 1 + 5 * sizeof(int) + attributeNameLength, &newVersion, sizeof(int));
+            rc = rbfm.insertRecord(columnsHandle, getColumnsAttrs(), attributesBuffer, rid);
+        }
+
+        rm_ScanIterator.close();
+        rbfm.closeFile(columnsHandle);
+
+        return rc;
     }
 
     // Extra credit work
     RC RelationManager::addAttribute(const std::string &tableName, const Attribute &attr) {
-        return -1;
+        if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
+        std::vector<Attribute> attrs;
+        getAttributes(tableName, attrs);
+        int newVersion = increaseTableVersion(tableName);
+
+        int tableId = getTableId(tableName);
+        int position = generatePosition(tableId);
+
+        FileHandle columnsHandle;
+        rbfm.openFile(columnsName, columnsHandle);
+
+        RC rc;
+        RM_ScanIterator rm_ScanIterator;
+        scan(columnsName, "table-id", EQ_OP, &tableId, getAttributeAttrs(), rm_ScanIterator);
+        RID rid;
+        int attributeNameLength, version;
+        while (rm_ScanIterator.getNextTuple(rid, attributesBuffer) != RM_EOF) {
+            std::memcpy(&attributeNameLength, (char *) attributesBuffer + 1 + sizeof(int), sizeof(int));
+            std::memcpy(&version, (char *) attributesBuffer + 1 + 5 * sizeof(int) + attributeNameLength, sizeof(int));
+            if (version != newVersion - 1) continue;
+            std::memcpy((char *) attributesBuffer + 1 + 5 * sizeof(int) + attributeNameLength, &newVersion, sizeof(int));
+            rc = rbfm.insertRecord(columnsHandle, getColumnsAttrs(), attributesBuffer, rid);
+        }
+
+        rm_ScanIterator.close();
+        if (rc != 0) return rc;
+
+        rc = insertColumn(columnsHandle, tableId, attr, position, newVersion);
+
+        rbfm.closeFile(columnsHandle);
+        return rc;
     }
 
     // QE IX related
