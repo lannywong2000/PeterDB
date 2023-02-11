@@ -44,7 +44,7 @@
 
     - The last 2 bytes of a page store the start of the free space from the start of page in bytes as an usigned short.
     - The second last 2 bytes stores the number of slots in the slot directory as an unsigned short.
-    - Slots grow from the last 4 bytes of a page. Each slot is a 4-bytes struct which contains a short as the offset of the record and an unsigned short as the record's length in bytes.
+    - Slots grow from the last 4 bytes of a page. Each slot is a 4-byte struct which contains a short as the offset of the record and an unsigned short as the record's length in bytes.
 
 ### 4. Page Management
 - Show your algorithm of finding next available-space page when inserting a record.
@@ -64,13 +64,5 @@
     - The rest of the page is not used for now.
 
 ### 5. Implementation Detail
-- Other implementation details goes here.
 
-  - As mentioned above, maintaining a current page number for each fileHandle is beneficial since it avoids finding free space from the first page of file every time a record is inserted. Thus speeding up the insertion. 
-
-### 6. Other (optional)
-- Freely use this section to tell us about things that are related to the project 1, but not related to the other sections (optional)
-
-
-
-- Feedback on the project to help improve the project. (optional)
+- As mentioned above, maintaining a current page number for each fileHandle is beneficial since it avoids finding free space from the first page of file every time a record is inserted. Thus speeding up the insertion.
