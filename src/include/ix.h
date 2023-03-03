@@ -11,9 +11,9 @@ namespace PeterDB {
 
 #define IX_EOF (-1)  // end of the index scan
 
-#define UNDEFINED_PAGE_NUM UINT_MAX
-
     typedef unsigned short PageIndex;
+
+    const PageNum UNDEFINED_PAGE_NUM = UINT_MAX;
 
     const PageIndex RID_SIZE = sizeof(PageNum) + sizeof(SlotNum);
 
