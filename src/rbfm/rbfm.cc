@@ -491,9 +491,13 @@ namespace PeterDB {
                     default:
                         std::memcpy(&lengthBuffer, data + 1, sizeof(int));
                         std::memcpy(&length, value, sizeof(int));
+                        delete[] varCharBuffer;
+                        varCharBuffer = nullptr;
                         varCharBuffer = new char[lengthBuffer + 1];
                         std::memset(varCharBuffer, 0, lengthBuffer + 1);
                         std::memcpy(varCharBuffer, data + 1 + sizeof(int), lengthBuffer);
+                        delete[] varChar;
+                        varChar = nullptr;
                         varChar = new char[length + 1];
                         std::memset(varChar, 0, length + 1);
                         std::memcpy(varChar, (char *) value + sizeof(int), length);

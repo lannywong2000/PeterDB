@@ -7,9 +7,24 @@
 #include "pfm.h"
 #include "rbfm.h" // for some type declarations only, e.g., RID and Attribute
 
-# define IX_EOF (-1)  // end of the index scan
-
 namespace PeterDB {
+
+#define IX_EOF (-1)  // end of the index scan
+
+#define UNDEFINED_PAGE_NUM UINT_MAX
+
+    typedef unsigned short PageIndex;
+
+    const PageIndex RID_SIZE = sizeof(PageNum) + sizeof(SlotNum);
+
+    typedef struct Entry {
+        bool isNull = true;
+        PageNum nodeNum;
+        char *key = nullptr;
+        RID rid;
+        int keyLength;
+    } Entry;
+
     class IX_ScanIterator;
 
     class IXFileHandle;
@@ -18,6 +33,8 @@ namespace PeterDB {
 
     public:
         static IndexManager &instance();
+
+        // File Functions
 
         // Create an index file.
         RC createFile(const std::string &fileName);
@@ -30,6 +47,91 @@ namespace PeterDB {
 
         // Close an ixFileHandle for an index.
         RC closeFile(IXFileHandle &ixFileHandle);
+
+        // Write the page num of root to disk.
+        RC writeRootPageNum(IXFileHandle &ixFileHandle);
+
+        // Read the page num of root from disk.
+        RC readRootPageNum(IXFileHandle &ixFileHandle);
+
+
+        // General Index Functions
+
+        // Get start of free space of an index page.
+        PageIndex getStartOfFreeSpace(const char *pageBuffer);
+
+        // Get key list size of an index page.
+        PageIndex getKeyListSize(const char *pageBuffer);
+
+        // Get key length;
+        PageIndex getKeyLength(const void *key, unsigned keyType);
+
+        // Get composite key length.
+        PageIndex getCompKeyLength(const void *key, unsigned keyType);
+
+        // Get RID from page buffer.
+        void getRID(const char *pageBuffer, RID &ridBuffer);
+
+        // Compare key in a page buffer with the one given.
+        int compareKey(const char *pageBuffer, const void *key, unsigned keyType);
+
+        // Compare two given RIDs.
+        int compareRID(const RID &ridBuffer, const RID &rid);
+
+        // Compare composite key in page buffer with the one given.
+        int compareCompKey(const char *pageBuffer, const void *key, const RID &rid, unsigned keyType);
+
+
+        // Node Functions
+
+        // Create a index node template.
+        RC createNode(char *nodeBuffer);
+
+        // Create a new root node.
+        RC createNewRoot(IXFileHandle &ixFileHandle, const Entry &childEntry);
+
+        // Whether a node page has space for an entry.
+        bool hasNodeSpace(const char *nodeBuffer, int keyLength);
+
+        // Find the page num pointer by the given key.
+        PageNum findInNode(const char *nodeBuffer, const void *key, unsigned keyType, int &pageNumOffset, int &keyOffset, const RID &rid, bool composite = false);
+
+        // Insert a key-RID pair in a leaf page, free space guaranteed.
+        void insertNode(char *nodeBuffer, int pageNumOffset, int keyOffset, const Entry &entry);
+
+
+        // Leaf Functions
+
+        // Create a index leaf template.
+        RC createLeaf(char *leafBuffer);
+
+        // Whether a page is leaf.
+        bool isLeaf(char *pageBuffer);
+
+        // Get next page num in a leaf page.
+        PageNum getNextPageNum(const char *leafBuffer);
+
+        // Whether a composite key is in leaf.
+        int findInLeaf(const char *leafBuffer, const void *key, const RID &rid, unsigned keyType, PageIndex &index);
+
+        // Whether a leaf page has space for a composite key.
+        bool hasLeafSpace(const char *leafBuffer, const void *key, unsigned keyType);
+
+        // Get the offset of the middle key in leaf.
+        PageIndex getLeafMidKey(const char *leafBuffer, unsigned keyType);
+
+        // Insert a key-RID pair in a leaf page, free space guaranteed.
+        void insertLeaf(char *leafBuffer, int offset, const void *key, const RID &rid, unsigned keyType);
+
+        // Get the page num of the leftmost leaf.
+        PageNum getLeftMostLeaf(IXFileHandle &ixFileHandle, char *leafBuffer);
+
+        // Get the page num of leaf by key.
+        PageNum getLeafByKey(IXFileHandle &ixFileHandle, const void *key, unsigned keyType, char *leafBuffer, const RID &rid, bool composite = false);
+
+
+        // B+ Tree recursive insertion.
+        RC insert(IXFileHandle &ixFileHandle, PageNum nodeNum, const void *key, const RID &rid, Entry &childEntry, unsigned keyType);
 
         // Insert an entry into the given index that is indicated by the given ixFileHandle.
         RC insertEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid);
@@ -46,7 +148,22 @@ namespace PeterDB {
                 bool highKeyInclusive,
                 IX_ScanIterator &ix_ScanIterator);
 
-        // Print the B+ tree in pre-order (in a JSON record format)
+        // Print a B+ Tree Entry key.
+        int printBTreeKey(const char *pageBuffer, std::ostream &out, unsigned keyType) const;
+
+        // Print a B+ Tree Entry RID.
+        void printBTreeRID(const char *pageBuffer, std::ostream &out) const;
+
+        // Print a B+ tree node entry.
+        int printBTreeNodeEntry(const char *nodeBuffer, std::ostream &out, unsigned keyType) const;
+
+        // Print a B+ tree leaf entry.
+        int printBTreeLeafEntry(const char *leafBuffer, std::ostream &out, const PageIndex &keyListSize, PageIndex &index, unsigned keyType) const;
+
+        // Print a B+ tree node recursively.
+        RC printBTreeNode(IXFileHandle &ixFileHandle, PageNum nodeNum, std::ostream &out) const;
+
+        // Print the B+ tree in pre-order (in a JSON record format).
         RC printBTree(IXFileHandle &ixFileHandle, const Attribute &attribute, std::ostream &out) const;
 
     protected:
@@ -59,6 +176,14 @@ namespace PeterDB {
 
     class IX_ScanIterator {
     public:
+        IndexManager &ix = IndexManager::instance();
+        IXFileHandle *ixFileHandle;
+
+        char *leafBuffer = nullptr;
+        PageIndex keyListSize, index, offset;
+        unsigned keyType;
+        char *highKey = nullptr;
+        bool highKeyInclusive;
 
         // Constructor
         IX_ScanIterator();
@@ -75,6 +200,11 @@ namespace PeterDB {
 
     class IXFileHandle {
     public:
+        FileHandle fileHandle;
+
+        //index variables
+        unsigned rootPageNum = UNDEFINED_PAGE_NUM;
+        unsigned keyType; // 0: INTEGER, 1: FLOAT, 2: VARCHAR
 
         // variables to keep counter for each operation
         unsigned ixReadPageCounter;

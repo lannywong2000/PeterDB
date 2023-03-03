@@ -12,6 +12,8 @@ namespace PeterDB {
 
 #define RBFM_EOF (-1)
 
+    typedef unsigned short SlotNum;
+
     //Slot Directory
     typedef struct Slot {
         short offset;      // offset of the record in the page
@@ -23,11 +25,11 @@ namespace PeterDB {
 
     // Record ID
     typedef struct RID{
-        unsigned pageNum;           // page number
-        unsigned short slotNum;     // slot number in the page
+        PageNum pageNum;     // page number
+        SlotNum slotNum;     // slot number in the page
 
         RID() {};
-        RID(unsigned pageNum, unsigned short slotNum): pageNum(pageNum), slotNum(slotNum) {};
+        RID(PageNum pageNum, SlotNum slotNum) : pageNum(pageNum), slotNum(slotNum) {};
     } RID;
 
     // Attribute
