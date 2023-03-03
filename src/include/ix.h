@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <string>
+#include <climits>
 
 #include "pfm.h"
 #include "rbfm.h" // for some type declarations only, e.g., RID and Attribute
@@ -11,9 +12,9 @@ namespace PeterDB {
 
 #define IX_EOF (-1)  // end of the index scan
 
-    typedef unsigned short PageIndex;
+#define UNDEFINED_PAGE_NUM UINT_MAX
 
-    const PageNum UNDEFINED_PAGE_NUM = UINT_MAX;
+    typedef unsigned short PageIndex;
 
     const PageIndex RID_SIZE = sizeof(PageNum) + sizeof(SlotNum);
 
