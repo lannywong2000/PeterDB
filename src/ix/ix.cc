@@ -123,7 +123,10 @@ namespace PeterDB {
     }
 
     int IndexManager::compareRID(const RID &ridBuffer, const RID &rid) {
-        if (ridBuffer.pageNum != rid.pageNum) return ridBuffer.pageNum - rid.pageNum;
+        if (ridBuffer.pageNum != rid.pageNum) {
+            if (ridBuffer.pageNum > rid.pageNum) return 1;
+            return -1;
+        }
         return ridBuffer.slotNum - rid.slotNum;
     }
 
@@ -191,15 +194,44 @@ namespace PeterDB {
         std::memcpy(leafBuffer + PAGE_SIZE - sizeof(PageIndex), &startOfFreeSpace, sizeof(PageIndex));
     }
 
-    PageIndex IndexManager::getLeafMidKey(const char *leafBuffer, unsigned keyType) {
-        PageIndex keyListLength = getKeyListSize(leafBuffer);
-        PageIndex offset = 1 + sizeof(PageIndex), midKeyIndex = keyListLength / 2;
-        if (keyType != 2) return offset + midKeyIndex * (sizeof(int) + RID_SIZE);
+    void IndexManager::getMidNode(const char *nodeBuffer, unsigned int keyType, PageIndex &midPageNumOffset,
+                                  PageIndex &midKeyOffset, PageIndex &oldListSize, PageIndex &newListSize) {
+        PageIndex keyListLength = getKeyListSize(nodeBuffer);
+        midPageNumOffset = 1 + sizeof(PageIndex) + sizeof(PageNum);
+        midKeyOffset = 1 + sizeof(PageIndex) + (keyListLength + 1) * sizeof(PageNum);
+        if (keyType != 2) {
+            PageIndex midKeyIndex = keyListLength / 2;
+            oldListSize = midKeyIndex;
+            newListSize = keyListLength - oldListSize - 1;
+            midPageNumOffset = midPageNumOffset + midKeyIndex * sizeof(PageNum);
+            midKeyOffset = midKeyOffset + midKeyIndex * (sizeof(int) + RID_SIZE);
+            return;
+        }
         PageIndex index = 0;
-        int length;
-        while (index < midKeyIndex) {
-            std::memcpy(&length, leafBuffer + offset, sizeof(int));
-            offset = offset + sizeof(int) + length + RID_SIZE;
+        oldListSize = 0;
+        PageIndex OVER_HEAD = 1 + sizeof(PageIndex) + (keyListLength + 1) * sizeof(PageNum);
+        PageIndex HALF_PAGE_SIZE = OVER_HEAD + (PAGE_SIZE - OVER_HEAD) / 2;
+        while (index < keyListLength && midKeyOffset < HALF_PAGE_SIZE) {
+            oldListSize = oldListSize + 1;
+            midPageNumOffset = midPageNumOffset + sizeof(PageNum);
+            midKeyOffset = midKeyOffset + getCompKeyLength(nodeBuffer + midKeyOffset, keyType);
+            index = index + 1;
+        }
+        newListSize = keyListLength - oldListSize - 1;
+    }
+
+    PageIndex IndexManager::getLeafMidKey(const char *leafBuffer, unsigned keyType, PageIndex &oldListSize) {
+        PageIndex keyListLength = getKeyListSize(leafBuffer);
+        PageIndex offset = 1 + sizeof(PageIndex);
+        if (keyType != 2) {
+            oldListSize = keyListLength / 2;
+            return offset + oldListSize * (sizeof(int) + RID_SIZE);
+        }
+        PageIndex index = 0;
+        oldListSize = 0;
+        while (index < keyListLength && offset < PAGE_SIZE / 2) {
+            oldListSize = oldListSize + 1;
+            offset = offset + getCompKeyLength(leafBuffer + offset, keyType);
             index = index + 1;
         }
         return offset;
@@ -237,7 +269,7 @@ namespace PeterDB {
 
         if (!isLeaf(pageBuffer)) {
             int pageNumOffset, keyOffset;
-            PageNum pageNum = findInNode(pageBuffer, key, keyType, pageNumOffset, keyOffset, rid, true);
+            PageNum pageNum = findInNode(pageBuffer, key, keyType, pageNumOffset, keyOffset, rid);
             rc = insert(ixFileHandle, pageNum, key, rid, childEntry, keyType);
             if (rc != 0) return rc;
             if (childEntry.isNull) return 0;
@@ -245,7 +277,47 @@ namespace PeterDB {
                 insertNode(pageBuffer, pageNumOffset, keyOffset, childEntry);
                 childEntry.isNull = true;
             } else {
-                return 100;
+                char newNodeBuffer[PAGE_SIZE];
+                createNode(newNodeBuffer);
+
+                PageIndex keyListSize = getKeyListSize(pageBuffer);
+                PageIndex midPageNumOffset, midKeyOffset, oldListSize, newListSize;
+                getMidNode(pageBuffer, keyType, midPageNumOffset, midKeyOffset, oldListSize, newListSize);
+
+                Entry childEntryCopy(childEntry);
+
+                int midKeyLength = getKeyLength(pageBuffer + midKeyOffset, keyType);
+                delete[] childEntry.key;
+                childEntry.key = new char[midKeyLength];
+                std::memcpy(childEntry.key, pageBuffer + midKeyOffset, midKeyLength);
+                childEntry.keyLength = midKeyLength;
+                childEntry.isNull = false;
+                childEntry.nodeNum = ixFileHandle.fileHandle.numberOfPages;;
+                getRID(pageBuffer + midKeyOffset + midKeyLength, childEntry.rid);
+
+                PageIndex startOfFreeSpace = getStartOfFreeSpace(pageBuffer);
+                std::memcpy(pageBuffer + 1, &oldListSize, sizeof(PageIndex));
+                std::memcpy(newNodeBuffer + 1, &newListSize, sizeof(PageIndex));
+                std::memcpy(newNodeBuffer + 1 + sizeof(PageIndex), pageBuffer + midPageNumOffset, (newListSize + 1) * sizeof(PageNum));
+                std::memcpy(newNodeBuffer + 1 + sizeof(PageIndex) + (newListSize + 1) * sizeof(PageNum), pageBuffer + midKeyOffset + midKeyLength + RID_SIZE, startOfFreeSpace - midKeyOffset - midKeyLength - RID_SIZE);
+                PageIndex newStartOfFreeSpace = 1 + sizeof(PageIndex) + (newListSize + 1) * sizeof(PageNum) + startOfFreeSpace - midKeyOffset - midKeyLength - RID_SIZE;
+                std::memcpy(newNodeBuffer + PAGE_SIZE - sizeof(PageIndex), &newStartOfFreeSpace, sizeof(PageIndex));
+                std::memmove(pageBuffer + midPageNumOffset, pageBuffer + 1 + sizeof(PageIndex) + (keyListSize + 1) * sizeof(PageNum), midKeyOffset - 1 - sizeof(PageIndex) - (keyListSize + 1) * sizeof(PageNum));
+                PageIndex oldStartOfFreeSpace = startOfFreeSpace - midKeyLength - RID_SIZE - newStartOfFreeSpace + 1 + sizeof(PageIndex);
+                std::memset(pageBuffer + oldStartOfFreeSpace, 0, startOfFreeSpace - oldStartOfFreeSpace);
+                std::memcpy(pageBuffer + PAGE_SIZE - sizeof(PageIndex), &oldStartOfFreeSpace, sizeof(PageIndex));
+
+                if (keyOffset <= midKeyOffset) insertNode(pageBuffer, pageNumOffset, keyOffset - (keyListSize - oldListSize) * sizeof(PageNum), childEntryCopy);
+                else insertNode(newNodeBuffer, pageNumOffset - (oldListSize + 1) * sizeof(PageNum), keyOffset - midKeyOffset - midKeyLength - RID_SIZE + (newListSize + 1) * sizeof(PageNum), childEntryCopy);
+                delete[] childEntryCopy.key;
+
+                rc = ixFileHandle.fileHandle.appendPage(newNodeBuffer);
+                if (rc != 0) return rc;
+
+                if (nodeNum == ixFileHandle.rootPageNum) {
+                    rc = createNewRoot(ixFileHandle, childEntry);
+                    if (rc != 0) return rc;
+                }
             }
         } else {
             PageIndex index;
@@ -264,8 +336,9 @@ namespace PeterDB {
                 std::memcpy(pageBuffer + PAGE_SIZE - sizeof(PageIndex) - sizeof(PageNum), &newPage, sizeof(PageNum));
 
                 PageIndex keyListSize = getKeyListSize(pageBuffer);
-                PageIndex oldListSize = keyListSize / 2, newListSize = keyListSize - oldListSize;
-                PageIndex midKeyOffset = getLeafMidKey(pageBuffer, keyType);
+                PageIndex oldListSize;
+                PageIndex midKeyOffset = getLeafMidKey(pageBuffer, keyType, oldListSize);
+                PageIndex newListSize = keyListSize - oldListSize;
                 std::memcpy(pageBuffer + 1, &oldListSize, sizeof(PageIndex));
                 PageIndex startOfFreeSpace = getStartOfFreeSpace(pageBuffer);
                 std::memcpy(pageBuffer + PAGE_SIZE - sizeof(PageIndex), &midKeyOffset, sizeof(PageIndex));
@@ -280,7 +353,6 @@ namespace PeterDB {
 
                 int length = getKeyLength(newLeafBuffer + 1 + sizeof(PageIndex), keyType);
                 delete[] childEntry.key;
-                childEntry.key = nullptr;
                 childEntry.key = new char[length];
                 std::memcpy(childEntry.key, newLeafBuffer + 1 + sizeof(PageIndex), length);
                 childEntry.keyLength = length;
@@ -335,7 +407,7 @@ namespace PeterDB {
         return leftMostLeaf;
     }
 
-    PageNum IndexManager::getLeafByKey(IXFileHandle &ixFileHandle, const void *key, unsigned keyType, char *leafBuffer, const RID &rid, bool composite) {
+    PageNum IndexManager::getLeafByKey(IXFileHandle &ixFileHandle, const void *key, unsigned keyType, char *leafBuffer, const RID &rid) {
         if (key == nullptr) return getLeftMostLeaf(ixFileHandle, leafBuffer);
 
         ixFileHandle.fileHandle.readPage(ixFileHandle.rootPageNum, leafBuffer);
@@ -343,7 +415,7 @@ namespace PeterDB {
 
         int pageNumOffset, keyOffset;
         while (!isLeaf(leafBuffer)) {
-            pageNum = findInNode(leafBuffer, key, keyType, pageNumOffset, keyOffset, rid, composite);
+            pageNum = findInNode(leafBuffer, key, keyType, pageNumOffset, keyOffset, rid);
             ixFileHandle.fileHandle.readPage(pageNum, leafBuffer);
         }
 
@@ -354,7 +426,7 @@ namespace PeterDB {
     IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid) {
         readRootPageNum(ixFileHandle);
         char leafBuffer[PAGE_SIZE];
-        PageNum leafPageNum = getLeafByKey(ixFileHandle, key, attribute.type, leafBuffer, rid, true);
+        PageNum leafPageNum = getLeafByKey(ixFileHandle, key, attribute.type, leafBuffer, rid);
         PageIndex index;
         int offset = findInLeaf(leafBuffer, key, rid, attribute.type, index);
         if (offset >= 0) return ERR_INDEX_DELETE_NOT_EXISTS;
@@ -512,14 +584,13 @@ namespace PeterDB {
         return printBTreeNode(ixFileHandle, ixFileHandle.rootPageNum, out);
     }
 
-    PageNum IndexManager::findInNode(const char *nodeBuffer, const void *key, unsigned keyType, int &pageNumOffset, int &keyOffset, const RID &rid, bool composite) {
+    PageNum IndexManager::findInNode(const char *nodeBuffer, const void *key, unsigned keyType, int &pageNumOffset, int &keyOffset, const RID &rid) {
         int keyListSize = getKeyListSize(nodeBuffer);
         pageNumOffset = 1 + sizeof(PageIndex);
         keyOffset = pageNumOffset + (keyListSize + 1) * sizeof(PageNum);
         int keyIndex = 0, cmp;
         while (keyIndex < keyListSize) {
-            if (composite) cmp = compareKey(nodeBuffer + keyOffset, key, keyType);
-            else cmp = compareCompKey(nodeBuffer + keyOffset, key, rid, keyType);
+            cmp = compareCompKey(nodeBuffer + keyOffset, key, rid, keyType);
             if (cmp > 0) break;
             pageNumOffset = pageNumOffset + sizeof(PageNum);
             if (cmp == 0) break;
@@ -545,6 +616,7 @@ namespace PeterDB {
         ix_ScanIterator.leafBuffer = new char[PAGE_SIZE];
         ix_ScanIterator.ixFileHandle = &ixFileHandle;
         ix_ScanIterator.keyType = attribute.type;
+        ix_ScanIterator.highKey = nullptr;
         if (highKey) {
             int highKeyLength = getKeyLength(highKey, attribute.type);
             ix_ScanIterator.highKey = new char[highKeyLength];
@@ -553,7 +625,7 @@ namespace PeterDB {
         ix_ScanIterator.highKeyInclusive = highKeyInclusive;
 
         readRootPageNum(ixFileHandle);
-        RID rid;
+        RID rid(0, 0);
         getLeafByKey(ixFileHandle, lowKey, attribute.type, ix_ScanIterator.leafBuffer, rid);
         ix_ScanIterator.keyListSize = getKeyListSize(ix_ScanIterator.leafBuffer);
         ix_ScanIterator.index = 0;
@@ -562,7 +634,7 @@ namespace PeterDB {
         if (lowKey == nullptr) return 0;
 
         while (ix_ScanIterator.index < ix_ScanIterator.keyListSize) {
-            int cmp = compareKey(ix_ScanIterator.leafBuffer + ix_ScanIterator.offset, lowKey, attribute.type);
+            int cmp = compareCompKey(ix_ScanIterator.leafBuffer + ix_ScanIterator.offset, lowKey, rid, attribute.type);
             if (cmp > 0 || lowKeyInclusive && cmp == 0) break;
             ix_ScanIterator.offset = ix_ScanIterator.offset + getCompKeyLength(ix_ScanIterator.leafBuffer + ix_ScanIterator.offset, attribute.type);
             ix_ScanIterator.index = ix_ScanIterator.index + 1;
@@ -589,8 +661,15 @@ namespace PeterDB {
             offset = 1 + sizeof(PageIndex);
         }
         if (highKey) {
-            int cmp = ix.compareKey(leafBuffer + offset, highKey, keyType);
-            if (cmp > 0 || !highKeyInclusive && cmp == 0) return IX_EOF;
+            if (highKeyInclusive) {
+                RID highKeyRid(UNDEFINED_PAGE_NUM, USHRT_MAX);
+                int cmp = ix.compareCompKey(leafBuffer + offset, highKey, highKeyRid, keyType);
+                if (cmp > 0) return IX_EOF;
+            } else {
+                RID highKeyRid(0, 0);
+                int cmp = ix.compareCompKey(leafBuffer + offset, highKey, highKeyRid, keyType);
+                if (cmp >= 0) return IX_EOF;
+            }
         }
         int keyLength = ix.getKeyLength(leafBuffer + offset, keyType);
         std::memcpy(key, leafBuffer + offset, keyLength);

@@ -24,6 +24,12 @@ namespace PeterDB {
         char *key = nullptr;
         RID rid;
         int keyLength;
+
+        Entry() {};
+        Entry(Entry &entry) : isNull(entry.isNull), nodeNum(entry.nodeNum), rid(entry.rid), keyLength(entry.keyLength) {
+            key = new char[entry.keyLength];
+            std::memcpy(key, entry.key, entry.keyLength);
+        }
     } Entry;
 
     class IX_ScanIterator;
@@ -95,10 +101,13 @@ namespace PeterDB {
         bool hasNodeSpace(const char *nodeBuffer, int keyLength);
 
         // Find the page num pointer by the given key.
-        PageNum findInNode(const char *nodeBuffer, const void *key, unsigned keyType, int &pageNumOffset, int &keyOffset, const RID &rid, bool composite = false);
+        PageNum findInNode(const char *nodeBuffer, const void *key, unsigned keyType, int &pageNumOffset, int &keyOffset, const RID &rid);
 
-        // Insert a key-RID pair in a leaf page, free space guaranteed.
+        // Insert a key-RID pair in a node page, free space guaranteed.
         void insertNode(char *nodeBuffer, int pageNumOffset, int keyOffset, const Entry &entry);
+
+        // Get the page num offset and key offset of the middle entry in node.
+        void getMidNode(const char *nodeBuffer, unsigned keyType, PageIndex &midPageNumOffset, PageIndex &midKeyOffset, PageIndex &oldListSize, PageIndex &newListSize);
 
 
         // Leaf Functions
@@ -119,7 +128,7 @@ namespace PeterDB {
         bool hasLeafSpace(const char *leafBuffer, const void *key, unsigned keyType);
 
         // Get the offset of the middle key in leaf.
-        PageIndex getLeafMidKey(const char *leafBuffer, unsigned keyType);
+        PageIndex getLeafMidKey(const char *leafBuffer, unsigned keyType, PageIndex &oldListSize);
 
         // Insert a key-RID pair in a leaf page, free space guaranteed.
         void insertLeaf(char *leafBuffer, int offset, const void *key, const RID &rid, unsigned keyType);
@@ -128,7 +137,7 @@ namespace PeterDB {
         PageNum getLeftMostLeaf(IXFileHandle &ixFileHandle, char *leafBuffer);
 
         // Get the page num of leaf by key.
-        PageNum getLeafByKey(IXFileHandle &ixFileHandle, const void *key, unsigned keyType, char *leafBuffer, const RID &rid, bool composite = false);
+        PageNum getLeafByKey(IXFileHandle &ixFileHandle, const void *key, unsigned keyType, char *leafBuffer, const RID &rid);
 
 
         // B+ Tree recursive insertion.
