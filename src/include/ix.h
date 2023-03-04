@@ -26,7 +26,9 @@ namespace PeterDB {
         int keyLength;
 
         Entry() {};
-        Entry(Entry &entry) : isNull(entry.isNull), nodeNum(entry.nodeNum), rid(entry.rid), keyLength(entry.keyLength) {
+        Entry(Entry &entry) : isNull(entry.isNull), nodeNum(entry.nodeNum), keyLength(entry.keyLength) {
+            rid.pageNum = entry.rid.pageNum;
+            rid.slotNum = entry.rid.slotNum;
             key = new char[entry.keyLength];
             std::memcpy(key, entry.key, entry.keyLength);
         }

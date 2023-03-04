@@ -593,9 +593,9 @@ namespace PeterDB {
             cmp = compareCompKey(nodeBuffer + keyOffset, key, rid, keyType);
             if (cmp > 0) break;
             pageNumOffset = pageNumOffset + sizeof(PageNum);
-            if (cmp == 0) break;
             keyOffset = keyOffset + getCompKeyLength(nodeBuffer + keyOffset, keyType);
             keyIndex = keyIndex + 1;
+            if (cmp == 0) break;
         }
         PageNum pageNum;
         std::memcpy(&pageNum, nodeBuffer + pageNumOffset, sizeof(PageNum));
