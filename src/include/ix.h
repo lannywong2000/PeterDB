@@ -191,11 +191,15 @@ namespace PeterDB {
         IndexManager &ix = IndexManager::instance();
         IXFileHandle *ixFileHandle;
 
-        char *leafBuffer = nullptr;
-        PageIndex keyListSize, index, offset;
+        PageNum leafNum;
+        PageIndex index, offset;
         unsigned keyType;
         char *highKey = nullptr;
         bool highKeyInclusive;
+
+        int lastKeyLength;
+        char *lastKey = nullptr;
+        RID lastRid;
 
         // Constructor
         IX_ScanIterator();
@@ -205,6 +209,9 @@ namespace PeterDB {
 
         // Get next matching entry
         RC getNextEntry(RID &rid, void *key);
+
+        // Init index scan
+        RC init();
 
         // Terminate index scan
         RC close();
