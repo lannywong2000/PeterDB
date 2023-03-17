@@ -42,6 +42,34 @@ namespace PeterDB {
         virtual RC getAttributes(std::vector<Attribute> &attrs) const = 0;
 
         virtual ~Iterator() = default;
+
+        bool getAttr(char *tupleBuffer, const std::vector<Attribute> &attrs, int attrPos, char *bitmap,
+                     int bitmapBytes, int &intBuffer, float &floatBuffer, std::string &varCharBuffer) {
+            std::memcpy(bitmap, tupleBuffer, bitmapBytes);
+            if (bitmap[attrPos / 8] >> (7 - attrPos % 8) & (unsigned) 1) return false;
+            int offset = bitmapBytes, length;
+            for (int i = 0; i < attrPos; i++) {
+                if (bitmap[i / 8] >> (7 - i % 8) & (unsigned) 1) continue;
+                length = 0;
+                if (attrs[i].type == 2) std::memcpy(&length, tupleBuffer + offset, sizeof(int));
+                offset = offset + sizeof(int) + length;
+            }
+            switch (attrs[attrPos].type) {
+                case 0:
+                    std::memcpy(&intBuffer, tupleBuffer + offset, sizeof(int));
+                    break;
+                case 1:
+                    std::memcpy(&floatBuffer, tupleBuffer + offset, sizeof(float));
+                    break;
+                default:
+                    std::memcpy(&length, tupleBuffer + offset, sizeof(int));
+                    char varChar[length + 1];
+                    std::memset(varChar, 0, length + 1);
+                    std::memcpy(varChar, tupleBuffer + offset + sizeof(int), length);
+                    varCharBuffer = std::string(varChar);
+            }
+            return true;
+        }
     };
 
     class TableScan : public Iterator {
@@ -216,8 +244,6 @@ namespace PeterDB {
 
         int getTupleLength(char *tupleBuffer, const std::vector<Attribute> &attrs, int attrsSize, char *bitmap, int bitmapBytes);
 
-        bool getAttr(char *tupleBuffer, const std::vector<Attribute> &attrs, int attrPos, char *bitmap, int bitmapBytes, int &intBuffer, float &floatBuffer, std::string &varCharBuffer);
-
         void fillInnerBuffer();
 
         RC fillOuterBuffer();
@@ -276,6 +302,27 @@ namespace PeterDB {
     };
 
     class Aggregate : public Iterator {
+        const std::vector<std::string> ops = {"MIN", "MAX", "COUNT", "SUM", "AVG"};
+        Iterator *iter;
+        const Attribute &aggAttr;
+        AggregateOp op;
+        const Attribute *groupAttr;
+        bool hasGroupBy, singleResultReturned = false;
+        std::vector<Attribute> attrs, outputAttrs;
+        int attrsSize, bitmapBytes, aggAttrPos = -1, groupAttrPos = -1;
+        void *bitmap = nullptr, *tupleBuffer = nullptr;
+        std::unordered_map<int, std::pair<float, int>> intHm;
+        std::unordered_map<float, std::pair<float, int>> floatHm;
+        std::unordered_map<std::string, std::pair<float, int>> varCharHm;
+        std::vector<std::pair<int, float>> intResults;
+        std::vector<std::pair<float, float>> floatResults;
+        std::vector<std::pair<std::string, float>> varCharResults;
+        int resultIndex;
+
+        RC getResult(void *data);
+
+        RC getGroupResult(void *data);
+
         // Aggregation operator
     public:
         // Mandatory

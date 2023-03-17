@@ -273,35 +273,6 @@ namespace PeterDB {
         return tupleLength;
     }
 
-    bool
-    BNLJoin::getAttr(char *tupleBuffer, const std::vector<Attribute> &attrs, int attrPos, char *bitmap,
-                     int bitmapBytes, int &intBuffer, float &floatBuffer, std::string &varCharBuffer) {
-        std::memcpy(bitmap, tupleBuffer, bitmapBytes);
-        if (bitmap[attrPos / 8] >> (7 - attrPos % 8) & (unsigned) 1) return false;
-        int offset = 0, length;
-        for (int i = 0; i < attrPos; i++) {
-            if (bitmap[i / 8] >> (7 - i % 8) & (unsigned) 1) continue;
-            length = 0;
-            if (attrs[i].type == 2) std::memcpy(&length, tupleBuffer + offset, sizeof(int));
-            offset = offset + sizeof(int) + length;
-        }
-        switch (attrs[attrPos].type) {
-            case 0:
-                std::memcpy(&intBuffer, tupleBuffer + offset, sizeof(int));
-                break;
-            case 1:
-                std::memcpy(&floatBuffer, tupleBuffer + offset, sizeof(float));
-                break;
-            default:
-                std::memcpy(&length, tupleBuffer + offset, sizeof(int));
-                char varChar[length + 1];
-                std::memset(varChar, 0, length + 1);
-                std::memcpy(varChar, tupleBuffer + offset + sizeof(int), length);
-                varCharBuffer = std::string(varChar);
-        }
-        return true;
-    }
-
     void BNLJoin::fillInnerBuffer() {
         RC rc;
         if (!innerHasNext) {
@@ -439,7 +410,7 @@ namespace PeterDB {
     }
 
     RC INLJoin::getNextTuple(void *data) {
-        return -1;
+        return QE_EOF;
     }
 
     RC INLJoin::getAttributes(std::vector<Attribute> &attrs) const {
@@ -462,23 +433,219 @@ namespace PeterDB {
         return -1;
     }
 
-    Aggregate::Aggregate(Iterator *input, const Attribute &aggAttr, AggregateOp op) {
-
+    Aggregate::Aggregate(Iterator *input, const Attribute &aggAttr, AggregateOp op) : iter(input), aggAttr(aggAttr), op(op), groupAttr(nullptr), hasGroupBy(false) {
+        iter->getAttributes(attrs);
+        attrsSize = attrs.size();
+        bitmapBytes = attrsSize % 8 ? attrsSize / 8 + 1 : attrsSize / 8;
+        bitmap = malloc(bitmapBytes);
+        tupleBuffer = malloc(PAGE_SIZE);
+        for (int i = 0; i < attrsSize; i++) {
+            if (attrs[i].name == aggAttr.name) {
+                aggAttrPos = i;
+                break;
+            }
+        }
+        assert(aggAttrPos != -1);
+        assert(attrs[aggAttrPos].type != 2);
+        outputAttrs.push_back(attrs[aggAttrPos]);
+        outputAttrs[0].name = ops[op] + "(" + outputAttrs[0].name + ")";
+        outputAttrs[0].length = 4;
+        outputAttrs[0].type = TypeReal;
     }
 
-    Aggregate::Aggregate(Iterator *input, const Attribute &aggAttr, const Attribute &groupAttr, AggregateOp op) {
+    Aggregate::Aggregate(Iterator *input, const Attribute &aggAttr, const Attribute &groupAttr, AggregateOp op) : iter(input), aggAttr(aggAttr), op(op), groupAttr(&groupAttr), hasGroupBy(true) {
+        iter->getAttributes(attrs);
+        attrsSize = attrs.size();
+        bitmapBytes = attrsSize % 8 ? attrsSize / 8 + 1 : attrsSize / 8;
+        bitmap = malloc(bitmapBytes);
+        tupleBuffer = malloc(PAGE_SIZE);
+        for (int i = 0; i < attrsSize; i++) {
+            if (attrs[i].name == aggAttr.name) {
+                aggAttrPos = i;
+                break;
+            }
+        }
+        assert(aggAttrPos != -1);
+        assert(attrs[aggAttrPos].type != 2);
+        for (int i = 0; i < attrsSize; i++) {
+            if (attrs[i].name == groupAttr.name) {
+                groupAttrPos = i;
+                break;
+            }
+        }
+        assert(groupAttrPos != -1);
+        assert(groupAttrPos != aggAttrPos);
+        outputAttrs.push_back(attrs[groupAttrPos]);
+        outputAttrs.push_back(attrs[aggAttrPos]);
+        outputAttrs[1].name = ops[op] + "(" + outputAttrs[1].name + ")";
+        outputAttrs[1].length = 4;
+        outputAttrs[1].type = TypeReal;
 
+        int intBuffer = 0; float floatBuffer = 0; std::string varCharBuffer;
+        int groupIntBuffer; float groupFloatBuffer; std::string groupVarCharBuffer;
+        while (iter->getNextTuple(tupleBuffer) == 0) {
+            if (!getAttr((char *) tupleBuffer, attrs, aggAttrPos, (char *) bitmap, bitmapBytes, intBuffer, floatBuffer, varCharBuffer)) continue;
+            if (!getAttr((char *) tupleBuffer, attrs, groupAttrPos, (char *) bitmap, bitmapBytes, groupIntBuffer, groupFloatBuffer, groupVarCharBuffer)) continue;
+            switch (groupAttr.type) {
+                case 0:
+                    if (intHm.find(groupIntBuffer) == intHm.end()) {
+                        if (op == 0) intHm[groupIntBuffer].first = INT_MAX;
+                        else if (op == 1) intHm[groupIntBuffer].first = INT_MIN;
+                    }
+                    switch (op) {
+                        case 0:
+                            if (aggAttr.type == 0) intHm[groupIntBuffer].first = intBuffer < intHm[groupIntBuffer].first ? intBuffer : intHm[groupIntBuffer].first;
+                            else intHm[groupIntBuffer].first = floatBuffer < intHm[groupIntBuffer].first ? floatBuffer : intHm[groupIntBuffer].first;
+                            break;
+                        case 1:
+                            if (aggAttr.type == 0) intHm[groupIntBuffer].first = intBuffer > intHm[groupIntBuffer].first ? intBuffer : intHm[groupIntBuffer].first;
+                            else intHm[groupIntBuffer].first = floatBuffer > intHm[groupIntBuffer].first ? floatBuffer : intHm[groupIntBuffer].first;
+                            break;
+                        default:
+                            intHm[groupIntBuffer].first = intHm[groupIntBuffer].first + intBuffer + floatBuffer;
+                    }
+                    intHm[groupIntBuffer].second = intHm[groupIntBuffer].second + 1;
+                    break;
+                case 1:
+                    if (floatHm.find(groupFloatBuffer) == floatHm.end()) {
+                        if (op == 0) floatHm[groupFloatBuffer].first = INT_MAX;
+                        else if (op == 1) floatHm[groupFloatBuffer].first = INT_MIN;
+                    }
+                    switch (op) {
+                        case 0:
+                            if (aggAttr.type == 0) floatHm[groupFloatBuffer].first = intBuffer < floatHm[groupFloatBuffer].first ? intBuffer : floatHm[groupFloatBuffer].first;
+                            else floatHm[groupFloatBuffer].first = floatBuffer < floatHm[groupFloatBuffer].first ? floatBuffer : floatHm[groupFloatBuffer].first;
+                            break;
+                        case 1:
+                            if (aggAttr.type == 0) floatHm[groupFloatBuffer].first = intBuffer > floatHm[groupFloatBuffer].first ? intBuffer : floatHm[groupFloatBuffer].first;
+                            else floatHm[groupFloatBuffer].first = floatBuffer > floatHm[groupFloatBuffer].first ? floatBuffer : floatHm[groupFloatBuffer].first;
+                            break;
+                        default:
+                            floatHm[groupFloatBuffer].first = floatHm[groupFloatBuffer].first + intBuffer + floatBuffer;
+                    }
+                    floatHm[groupFloatBuffer].second = floatHm[groupFloatBuffer].second + 1;
+                    break;
+                default:
+                    if (varCharHm.find(groupVarCharBuffer) == varCharHm.end()) {
+                        if (op == 0) varCharHm[groupVarCharBuffer].first = INT_MAX;
+                        else if (op == 1) varCharHm[groupVarCharBuffer].first = INT_MIN;
+                    }
+                    switch (op) {
+                        case 0:
+                            if (aggAttr.type == 0) varCharHm[groupVarCharBuffer].first = intBuffer < varCharHm[groupVarCharBuffer].first ? intBuffer : varCharHm[groupVarCharBuffer].first;
+                            else varCharHm[groupVarCharBuffer].first = floatBuffer < varCharHm[groupVarCharBuffer].first ? floatBuffer : varCharHm[groupVarCharBuffer].first;
+                            break;
+                        case 1:
+                            if (aggAttr.type == 0) varCharHm[groupVarCharBuffer].first = intBuffer > varCharHm[groupVarCharBuffer].first ? intBuffer : varCharHm[groupVarCharBuffer].first;
+                            else varCharHm[groupVarCharBuffer].first = floatBuffer > varCharHm[groupVarCharBuffer].first ? floatBuffer : varCharHm[groupVarCharBuffer].first;
+                            break;
+                        default:
+                            varCharHm[groupVarCharBuffer].first = varCharHm[groupVarCharBuffer].first + intBuffer + floatBuffer;
+                    }
+                    varCharHm[groupVarCharBuffer].second = varCharHm[groupVarCharBuffer].second + 1;
+            }
+        }
+
+        switch (groupAttr.type) {
+            case 0:
+                for (auto &kv : intHm) {
+                    if (op == 2) kv.second.first = kv.second.second;
+                    else if (op == 4) kv.second.first = kv.second.first / kv.second.second;
+                    intResults.emplace_back(kv.first, kv.second.first);
+                }
+                break;
+            case 1:
+                for (auto &kv : floatHm) {
+                    if (op == 2) kv.second.first = kv.second.second;
+                    else if (op == 4) kv.second.first = kv.second.first / kv.second.second;
+                    floatResults.emplace_back(kv.first, kv.second.first);
+                }
+                break;
+            default:
+                for (auto &kv : varCharHm) {
+                    if (op == 2) kv.second.first = kv.second.second;
+                    else if (op == 4) kv.second.first = kv.second.first / kv.second.second;
+                    varCharResults.emplace_back(kv.first, kv.second.first);
+                }
+        }
+        resultIndex = 0;
     }
 
     Aggregate::~Aggregate() {
+        attrs.clear();
+        intHm.clear();
+        floatHm.clear();
+        varCharHm.clear();
+        intResults.clear();
+        floatResults.clear();
+        varCharResults.clear();
+        free(bitmap);
+        free(tupleBuffer);
+    }
 
+    RC Aggregate::getResult(void *data) {
+        if (singleResultReturned) return QE_EOF;
+        float result = 0;
+        int count = 0;
+        if (op == 0) result = INT_MAX;
+        else if (op == 1) result = INT_MIN;
+        int intBuffer = 0; float floatBuffer = 0; std::string varCharBuffer;
+        while (iter->getNextTuple(tupleBuffer) == 0) {
+            if (!getAttr((char *) tupleBuffer, attrs, aggAttrPos, (char *) bitmap, bitmapBytes, intBuffer, floatBuffer, varCharBuffer)) continue;
+            switch (op) {
+                case 0:
+                    if (aggAttr.type == 0) result = intBuffer < result ? intBuffer : result;
+                    else result = floatBuffer < result ? floatBuffer : result;
+                    break;
+                case 1:
+                    if (aggAttr.type == 0) result = intBuffer > result ? intBuffer : result;
+                    else result = floatBuffer > result ? floatBuffer : result;
+                    break;
+                default:
+                    result = result + intBuffer + floatBuffer;
+            }
+            count = count + 1;
+        }
+        if (op == 2) result = count;
+        else if (op == 4) result = result / count;
+        std::memset(data, 0, 1);
+        std::memcpy((char *) data + 1, &result, sizeof(int));
+        singleResultReturned = true;
+        return 0;
+    }
+
+    RC Aggregate::getGroupResult(void *data) {
+        switch (groupAttr->type) {
+            case 0:
+                if (resultIndex >= intResults.size()) return QE_EOF;
+                std::memcpy((char *) data + 1, &intResults[resultIndex].first, sizeof(int));
+                std::memcpy((char *) data + 1 + sizeof(int), &intResults[resultIndex].second, sizeof(float));
+                break;
+            case 1:
+                if (resultIndex >= floatResults.size()) return QE_EOF;
+                std::memcpy((char *) data + 1, &floatResults[resultIndex].first, sizeof(float));
+                std::memcpy((char *) data + 1 + sizeof(float), &floatResults[resultIndex].second, sizeof(float));
+                break;
+            default:
+                if (resultIndex >= varCharResults.size()) return QE_EOF;
+                int length = varCharResults[resultIndex].first.size();
+                std::memcpy((char *) data + 1, &length, sizeof(int));
+                std::memcpy((char *) data + 1+ sizeof(int), varCharResults[resultIndex].first.c_str(), length);
+                std::memcpy((char *) data + 1 + sizeof(int) + length, &floatResults[resultIndex].second, sizeof(float));
+        }
+        std::memset(data, 0, 1);
+        resultIndex = resultIndex + 1;
+        return 0;
     }
 
     RC Aggregate::getNextTuple(void *data) {
-        return -1;
+        if (hasGroupBy) return getGroupResult(data);
+        return getResult(data);
     }
 
     RC Aggregate::getAttributes(std::vector<Attribute> &attrs) const {
-        return -1;
+        attrs.clear();
+        attrs = outputAttrs;
+        return 0;
     }
 } // namespace PeterDB
