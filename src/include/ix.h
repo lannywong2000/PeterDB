@@ -5,8 +5,7 @@
 #include <string>
 #include <climits>
 
-#include "pfm.h"
-#include "rbfm.h" // for some type declarations only, e.g., RID and Attribute
+#include "rbfm.h"
 
 namespace PeterDB {
 

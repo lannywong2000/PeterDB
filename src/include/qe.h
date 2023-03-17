@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <limits>
+#include <unordered_map>
 
 #include "rm.h"
 #include "ix.h"
@@ -53,7 +54,7 @@ namespace PeterDB {
         std::vector<std::string> attrNames;
         RID rid;
     public:
-        TableScan(RelationManager &rm, const std::string &tableName, const char *alias = NULL) : rm(rm) {
+        TableScan(RelationManager &rm, const std::string &tableName, const char *alias = nullptr) : rm(rm) {
             //Set members
             this->tableName = tableName;
 
@@ -67,7 +68,7 @@ namespace PeterDB {
             }
 
             // Call RM scan to get an iterator
-            rm.scan(tableName, "", NO_OP, NULL, attrNames, iter);
+            rm.scan(tableName, "", NO_OP, nullptr, attrNames, iter);
 
             // Set alias
             if (alias) this->tableName = alias;
@@ -76,7 +77,7 @@ namespace PeterDB {
         // Start a new iterator given the new compOp and value
         void setIterator() {
             iter.close();
-            rm.scan(tableName, "", NO_OP, NULL, attrNames, iter);
+            rm.scan(tableName, "", NO_OP, nullptr, attrNames, iter);
         };
 
         RC getNextTuple(void *data) override {
@@ -91,7 +92,7 @@ namespace PeterDB {
             for (Attribute &attribute : attributes) {
                 attribute.name = tableName + "." + attribute.name;
             }
-            return RC(0);
+            return 0;
         };
 
         ~TableScan() override {
@@ -111,7 +112,7 @@ namespace PeterDB {
         RID rid;
     public:
         IndexScan(RelationManager &rm, const std::string &tableName, const std::string &attrName,
-                  const char *alias = NULL) : rm(rm) {
+                  const char *alias = nullptr) : rm(rm) {
             // Set members
             this->tableName = tableName;
             this->attrName = attrName;
@@ -120,7 +121,7 @@ namespace PeterDB {
             rm.getAttributes(tableName, attrs);
 
             // Call rm indexScan to get iterator
-            rm.indexScan(tableName, attrName, NULL, NULL, true, true, iter);
+            rm.indexScan(tableName, attrName, nullptr, nullptr, true, true, iter);
 
             // Set alias
             if (alias) this->tableName = alias;
@@ -144,11 +145,12 @@ namespace PeterDB {
             attributes.clear();
             attributes = this->attrs;
 
-
             // For attribute in std::vector<Attribute>, name it as rel.attr
             for (Attribute &attribute : attributes) {
                 attribute.name = tableName + "." + attribute.name;
             }
+
+            return 0;
         };
 
         ~IndexScan() override {
@@ -157,6 +159,14 @@ namespace PeterDB {
     };
 
     class Filter : public Iterator {
+        Iterator *iter;
+        std::vector<Attribute> attrs;
+        const Condition &cond;
+        int condAttrPos = -1, attrsSize, bitmapBytes, condIntBuffer;
+        float condFloatBuffer;
+        void *bitmap = nullptr;
+        std::string condVarCharBuffer;
+
         // Filter operator
     public:
         Filter(Iterator *input,               // Iterator of input R
@@ -172,6 +182,11 @@ namespace PeterDB {
     };
 
     class Project : public Iterator {
+        Iterator *iter;
+        int attrsBufferSize, bitmapBufferBytes, attrsSize, bitmapBytes;
+        std::vector<Attribute> attrsBuffer, attrs;
+        void *dataBuffer = nullptr, *bitmapBuffer = nullptr, *bitmap = nullptr;
+
         // Projection operator
     public:
         Project(Iterator *input,                                // Iterator of input R
@@ -185,6 +200,30 @@ namespace PeterDB {
     };
 
     class BNLJoin : public Iterator {
+        Iterator *outer;
+        TableScan *inner;
+        const Condition &cond;
+        const unsigned int numPages;
+        std::vector<Attribute> attrs, leftAttrs, rightAttrs;
+        int leftAttrsSize, rightAttrsSize, attrsSize, leftBitmapBytes, rightBitmapBytes, bitmapBytes, innerAttrPos = -1, outerAttrPos = -1;
+        void *leftBitmap = nullptr, *rightBitmap = nullptr, *bitmap = nullptr, *innerBuffer = nullptr, *outerBuffer = nullptr, *innerTupleBuffer = nullptr, *outerTupleBuffer = nullptr;
+        std::unordered_map<int, std::vector<std::pair<int, int>>> intHm;
+        std::unordered_map<float, std::vector<std::pair<int, int>>> floatHm;
+        std::unordered_map<std::string, std::vector<std::pair<int, int>>> varCharHm;
+        bool innerHasNext = false, outerHasNext = true, outerFillingStarted = false;
+        int innerBufferIndex = 0, outerBufferIndex = 0;
+        std::vector<std::pair<int, int>> innerBufferDirectory;
+
+        int getTupleLength(char *tupleBuffer, const std::vector<Attribute> &attrs, int attrsSize, char *bitmap, int bitmapBytes);
+
+        bool getAttr(char *tupleBuffer, const std::vector<Attribute> &attrs, int attrPos, char *bitmap, int bitmapBytes, int &intBuffer, float &floatBuffer, std::string &varCharBuffer);
+
+        void fillInnerBuffer();
+
+        RC fillOuterBuffer();
+
+        void joinTuples(int leftOffset, int leftLength, int rightOffset, int rightLength, void *data);
+
         // Block nested-loop join operator
     public:
         BNLJoin(Iterator *leftIn,            // Iterator of input R

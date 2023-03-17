@@ -1,4 +1,5 @@
 #include "src/include/rm.h"
+#include <iostream>
 
 namespace PeterDB {
     RelationManager &RelationManager::instance() {
@@ -13,12 +14,15 @@ namespace PeterDB {
         std::memset(attributesBuffer, 0, 75);
         positionBuffer = malloc(5);
         std::memset(positionBuffer, 0, 5);
+        tupleBuffer = malloc(PAGE_SIZE);
+        std::memset(tupleBuffer, 0, PAGE_SIZE);
     }
 
     RelationManager::~RelationManager() {
         free(tableIdBuffer);
         free(attributesBuffer);
         free(positionBuffer);
+        free(tupleBuffer);
     }
 
     RelationManager::RelationManager(const RelationManager &) = default;
@@ -26,6 +30,8 @@ namespace PeterDB {
     RelationManager &RelationManager::operator=(const RelationManager &) = default;
 
     RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
+
+    IndexManager &ix = IndexManager::instance();
 
     std::vector<Attribute> RelationManager::getTablesAttrs() {
         std::vector<Attribute> tablesAttrs;
@@ -44,6 +50,13 @@ namespace PeterDB {
         columnsAttrs.emplace_back("column-position", TypeInt, 4);
         columnsAttrs.emplace_back("table-version", TypeInt, 4);
         return columnsAttrs;
+    }
+
+    std::vector<Attribute> RelationManager::getIndexesAttrs() {
+        std::vector<Attribute> indexesAttrs;
+        indexesAttrs.emplace_back("table-id", TypeInt, 4);
+        indexesAttrs.emplace_back("column-position", TypeInt, 4);
+        return indexesAttrs;
     }
 
     std::vector<std::string> RelationManager::getAttributeAttrs() {
@@ -98,6 +111,15 @@ namespace PeterDB {
         return 0;
     }
 
+    RC RelationManager::insertIndexes(FileHandle &indexesHandle, int tableId, int columnPosition) {
+        RID rid;
+        char data[1 + 2 * sizeof(int)];
+        std::memset(data, 0, 1);
+        std::memcpy(data + 1, &tableId, sizeof(int));
+        std::memcpy(data + 1 + sizeof(int), &columnPosition, sizeof(int));
+        return rbfm.insertRecord(indexesHandle, getIndexesAttrs(), data, rid);
+    }
+
     RC RelationManager::deleteFromSystemFiles(const std::string &tableName, const RID &rid) {
         if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
         std::vector<Attribute> attrs;
@@ -114,6 +136,8 @@ namespace PeterDB {
         if (rc != 0) return rc;
         rc = rbfm.createFile(columnsName);
         if (rc != 0) return rc;
+        rc = rbfm.createFile(indexesName);
+        if (rc != 0) return rc;
 
         FileHandle tablesHandle, columnsHandle;
         rbfm.openFile(tablesName, tablesHandle);
@@ -122,8 +146,12 @@ namespace PeterDB {
         insertTables(tablesHandle, -2, tablesName);
         insertTables(tablesHandle, -1, columnsName);
 
+        insertTables(tablesHandle, -3, indexesName);
+
         insertColumns(columnsHandle, -2, getTablesAttrs());
         insertColumns(columnsHandle, -1, getColumnsAttrs());
+
+        insertColumns(columnsHandle, -3, getIndexesAttrs());
 
         rbfm.closeFile(tablesHandle);
         rbfm.closeFile(columnsHandle);
@@ -135,6 +163,8 @@ namespace PeterDB {
         RC rc = rbfm.destroyFile(tablesName);
         if (rc != 0) return rc;
         rc = rbfm.destroyFile(columnsName);
+        if (rc != 0) return rc;
+        rc = rbfm.destroyFile(indexesName);
         if (rc != 0) return rc;
         return 0;
     }
@@ -208,7 +238,7 @@ namespace PeterDB {
     }
 
     RC RelationManager::deleteTable(const std::string &tableName) {
-        if (tableName == tablesName || tableName == columnsName) return ERR_CATALOG_ILLEGAL_DELETE;
+        if (tableName == tablesName || tableName == columnsName || tableName == indexesName) return ERR_CATALOG_ILLEGAL_DELETE;
         if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
         int tableId = getTableId(tableName);
         RID rid;
@@ -222,12 +252,20 @@ namespace PeterDB {
 
         std::vector<RID> toBeDeleted;
         scan(columnsName, "table-id", EQ_OP, &tableId, attributeNames, rm_ScanIterator);
+        while (rm_ScanIterator.getNextTuple(rid, tableIdBuffer) != RM_EOF) toBeDeleted.push_back(rid);
+        rm_ScanIterator.close();
+        for (const RID &ridBuffer : toBeDeleted) deleteFromSystemFiles(columnsName, ridBuffer);
+
+        toBeDeleted.clear();
+        int columnPosition;
+        scan(indexesName, "table-id", EQ_OP, &tableId, {"column-position"}, rm_ScanIterator);
         while (rm_ScanIterator.getNextTuple(rid, tableIdBuffer) != RM_EOF) {
-            std::memcpy(&tableId, (char *) tableIdBuffer + 1, sizeof(int));
+            std::memcpy(&columnPosition, (char *) tableIdBuffer + 1, sizeof(int));
+            ix.destroyFile(getIndexFileName(tableName, columnPosition));
             toBeDeleted.push_back(rid);
         }
         rm_ScanIterator.close();
-        for (const RID &ridBuffer : toBeDeleted) deleteFromSystemFiles(columnsName, ridBuffer);
+        for (const RID &ridBuffer : toBeDeleted) deleteFromSystemFiles(indexesName, ridBuffer);
 
         return rbfm.destroyFile(getFileName(tableName));
     }
@@ -267,6 +305,7 @@ namespace PeterDB {
         if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
         if (tableName == tablesName) {attrs = getTablesAttrs(); return 0;}
         if (tableName == columnsName) {attrs = getColumnsAttrs(); return 0;}
+        if (tableName == indexesName) {attrs = getIndexesAttrs(); return 0;}
         FileHandle fileHandle;
         rbfm.openFile(getFileName(tableName), fileHandle);
         std::vector<int> positions;
@@ -276,38 +315,54 @@ namespace PeterDB {
     }
 
     RC RelationManager::insertTuple(const std::string &tableName, const void *data, RID &rid) {
-        if (tableName == tablesName || tableName == columnsName) return ERR_CATALOG_ILLEGAL_MODIFY;
+        if (tableName == tablesName || tableName == columnsName || tableName == indexesName) return ERR_CATALOG_ILLEGAL_MODIFY;
         if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
         std::vector<Attribute> attrs;
-        getAttributes(tableName, attrs);
+        std::vector<int> positions;
         FileHandle fileHandle;
         rbfm.openFile(getFileName(tableName), fileHandle);
+        getVersionedAttributes(tableName, fileHandle.version, attrs, positions);
         RC rc = rbfm.insertRecord(fileHandle, attrs, data, rid);
         rbfm.closeFile(fileHandle);
-        return rc;
+        if (rc != 0) return rc;
+        return modifyIndex(tableName, data, rid, attrs, positions);
     }
 
     RC RelationManager::deleteTuple(const std::string &tableName, const RID &rid) {
-        if (tableName == tablesName || tableName == columnsName) return ERR_CATALOG_ILLEGAL_MODIFY;
+        if (tableName == tablesName || tableName == columnsName || tableName == indexesName) return ERR_CATALOG_ILLEGAL_MODIFY;
         if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
         std::vector<Attribute> attrs;
-        getAttributes(tableName, attrs);
+        std::vector<int> positions;
         FileHandle fileHandle;
+        rbfm.openFile(getFileName(tableName), fileHandle);
+        getVersionedAttributes(tableName, fileHandle.version, attrs, positions);
         rbfm.openFile(getFileName(tableName), fileHandle);
         RC rc = rbfm.deleteRecord(fileHandle, attrs, rid);
         rbfm.closeFile(fileHandle);
-        return rc;
+        if (rc != 0) return rc;
+
+        readTuple(tableName, rid, tupleBuffer);
+        return modifyIndex(tableName, tupleBuffer, rid, attrs, positions, false);
     }
 
     RC RelationManager::updateTuple(const std::string &tableName, const void *data, const RID &rid) {
+        if (tableName == tablesName || tableName == columnsName || tableName == indexesName) return ERR_CATALOG_ILLEGAL_MODIFY;
         if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
         std::vector<Attribute> attrs;
-        getAttributes(tableName, attrs);
+        std::vector<int> positions;
         FileHandle fileHandle;
         rbfm.openFile(getFileName(tableName), fileHandle);
-        RC rc = rbfm.updateRecord(fileHandle, attrs, data, rid);
+        getVersionedAttributes(tableName, fileHandle.version, attrs, positions);
+
+        readTuple(tableName, rid, tupleBuffer);
+        RC rc = modifyIndex(tableName, tupleBuffer, rid, attrs, positions, false);
+        if (rc != 0) return rc;
+
+        rc = rbfm.updateRecord(fileHandle, attrs, data, rid);
         rbfm.closeFile(fileHandle);
-        return rc;
+        if (rc != 0) return rc;
+
+        return modifyIndex(tableName, data, rid, attrs, positions);
     }
 
     int RelationManager::getDataBufferSize(const std::vector<Attribute> &attrs) {
@@ -541,12 +596,137 @@ namespace PeterDB {
     }
 
     // QE IX related
-    RC RelationManager::createIndex(const std::string &tableName, const std::string &attributeName){
+    RC RelationManager::modifyIndex(const std::string &tableName, const void *data, const RID &rid, std::vector<Attribute> &attrs,
+                                    std::vector<int> &positions, bool insertion) {
+        RC rc;
+        int size = attrs.size();
+        RID ridBuffer;
+        IXFileHandle ixFileHandle;
+        int numberOfNullBytes = size % 8 == 0 ? size / 8 : size / 8 + 1;
+        char bitmaps[numberOfNullBytes];
+        std::memcpy(bitmaps, data, numberOfNullBytes);
+        int offset = numberOfNullBytes;
+        for (int i = 0; i < size; i++) {
+            int indexOfBitmap = i / 8;
+            int offsetOfBitmap = i % 8;
+            if (bitmaps[indexOfBitmap] >> (7 - offsetOfBitmap) & (unsigned) 1) continue;
+            int keyLength;
+            if (attrs[i].type != 2) keyLength = 4;
+            else {
+                std::memcpy(&keyLength, (char *) data + offset, sizeof(int));
+                keyLength = keyLength + sizeof(int);
+            }
+            if (hasIndexOn(tableName, positions[i], ridBuffer)) {
+                char key[keyLength];
+                std::memcpy(&key, (char *) data + offset, keyLength);
+                ix.openFile(getIndexFileName(tableName, positions[i]), ixFileHandle);
+                if (insertion) rc = ix.insertEntry(ixFileHandle, attrs[i], key, rid);
+                else rc = ix.deleteEntry(ixFileHandle, attrs[i], key, rid);
+                ix.closeFile(ixFileHandle);
+                if (rc != 0) return rc;
+            }
+            offset = offset + keyLength;
+        }
+        return 0;
+    }
+
+    int RelationManager::getColumnPosition(const std::string &tableName, const std::string &attributeName, Attribute &attrBuffer) {
+        FileHandle fileHandle;
+        rbfm.openFile(getFileName(tableName), fileHandle);
+        std::vector<Attribute> attrs;
+        std::vector<int> positions;
+        getVersionedAttributes(tableName, fileHandle.version, attrs, positions);
+
+        int size = attrs.size();
+        for (int i = 0; i < size; i++) {
+            if (attrs[i].name == attributeName) {
+                rbfm.closeFile(fileHandle);
+                attrBuffer = attrs[i];
+                return positions[i];
+            }
+        }
+
+        rbfm.closeFile(fileHandle);
         return -1;
     }
 
+    std::string RelationManager::getIndexFileName(const std::string &tableName, int columnPosition) {
+        return tableName + "_" + std::to_string(columnPosition) + indexSuffix;
+    }
+
+    bool RelationManager::hasIndexOn(const std::string &tableName, int columnPosition, RID &rid) {
+        int tableId = getTableId(tableName);
+        RM_ScanIterator rm_ScanIterator;
+        scan(indexesName, "table-id", EQ_OP, &tableId, {"column-position"}, rm_ScanIterator);
+
+        int columnPositionBuffer;
+        while (rm_ScanIterator.getNextTuple(rid, tableIdBuffer) != RM_EOF) {
+            std::memcpy(&columnPositionBuffer, (char *) tableIdBuffer + 1, sizeof(int));
+            if (columnPositionBuffer == columnPosition) {
+                rm_ScanIterator.close();
+                return true;
+            }
+        }
+
+        rm_ScanIterator.close();
+        return false;
+    }
+
+    RC RelationManager::createIndex(const std::string &tableName, const std::string &attributeName){
+        if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
+
+        Attribute attrBuffer;
+        int columnPosition = getColumnPosition(tableName, attributeName, attrBuffer);
+        if (columnPosition < 0) return ERR_INDEX_CREATE_ON_NON_EXISTS_COL;
+
+        RID rid;
+        if (hasIndexOn(tableName, columnPosition, rid)) return ERR_INDEX_CREATE_DUPLICATE;
+
+        std::string indexFileName = getIndexFileName(tableName, columnPosition);
+        RC rc = ix.createFile(indexFileName);
+        if (rc != 0) return rc;
+
+        FileHandle indexesHandle;
+        rbfm.openFile(indexesName, indexesHandle);
+
+        int tableId = getTableId(tableName);
+        rc = insertIndexes(indexesHandle, tableId, columnPosition);
+        if (rc != 0) return rc;
+
+        rc = rbfm.closeFile(indexesHandle);
+        if (rc != 0) return rc;
+
+        RM_ScanIterator rm_ScanIterator;
+        std::vector<Attribute> attrs;
+        std::vector<int> positions;
+        FileHandle fileHandle;
+        rbfm.openFile(getFileName(tableName), fileHandle);
+        getVersionedAttributes(tableName, fileHandle.version, attrs, positions);
+        rbfm.closeFile(fileHandle);
+        std::vector<std::string> attrNames;
+        for (const auto &attr : attrs) attrNames.push_back(attr.name);
+        scan(tableName, "", NO_OP, nullptr, attrNames, rm_ScanIterator);
+        while (rm_ScanIterator.getNextTuple(rid, tupleBuffer) != RM_EOF) modifyIndex(tableName, tupleBuffer, rid, attrs, positions);
+        rm_ScanIterator.close();
+
+        return 0;
+    }
+
     RC RelationManager::destroyIndex(const std::string &tableName, const std::string &attributeName){
-        return -1;
+        if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
+
+        Attribute attrBuffer;
+        int columnPosition = getColumnPosition(tableName, attributeName, attrBuffer);
+        if (columnPosition < 0) return ERR_INDEX_DELETE_ON_NON_EXISTS_COL;
+
+        RID rid;
+        if (!hasIndexOn(tableName, columnPosition, rid)) return ERR_INDEX_DELETE_ON_NON_EXISTS_INDEX;
+
+        std::string indexFileName = getIndexFileName(tableName, columnPosition);
+        RC rc = ix.destroyFile(indexFileName);
+        if (rc != 0) return rc;
+
+        return deleteFromSystemFiles(indexesName, rid);
     }
 
     // indexScan returns an iterator to allow the caller to go through qualified entries in index
@@ -557,7 +737,17 @@ namespace PeterDB {
                  bool lowKeyInclusive,
                  bool highKeyInclusive,
                  RM_IndexScanIterator &rm_IndexScanIterator){
-        return -1;
+        if (!checkTableExists(tableName)) return ERR_TABLE_NOT_EXISTS;
+
+        Attribute attrBuffer;
+        int columnPosition = getColumnPosition(tableName, attributeName, attrBuffer);
+        if (columnPosition < 0) return ERR_INDEX_SCAN_ON_NON_EXISTS_COL;
+
+        RID rid;
+        if (!hasIndexOn(tableName, columnPosition, rid)) return ERR_INDEX_SCAN_ON_NON_EXISTS_INDEX;
+
+        ix.openFile(getIndexFileName(tableName, columnPosition), rm_IndexScanIterator.ixFileHandle);
+        return ix.scan(rm_IndexScanIterator.ixFileHandle, attrBuffer, lowKey, highKey, lowKeyInclusive, highKeyInclusive, rm_IndexScanIterator.ix_ScanIterator);
     }
 
 
@@ -566,11 +756,13 @@ namespace PeterDB {
     RM_IndexScanIterator::~RM_IndexScanIterator() = default;
 
     RC RM_IndexScanIterator::getNextEntry(RID &rid, void *key){
-        return -1;
+        return ix_ScanIterator.getNextEntry(rid, key);
     }
 
     RC RM_IndexScanIterator::close(){
-        return -1;
+        RC rc = ix.closeFile(ixFileHandle);
+        if (rc != 0) return 0;
+        return ix_ScanIterator.close();
     }
 
 } // namespace PeterDB

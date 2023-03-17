@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "src/include/rbfm.h"
+#include "ix.h"
 
 namespace PeterDB {
 
@@ -13,6 +13,10 @@ namespace PeterDB {
 #define tablesName "Tables"
 
 #define columnsName "Columns"
+
+#define indexesName "Indexes"
+
+#define indexSuffix ".idx"
 
     // RM_ScanIterator is an iterator to go through tuples
     class RM_ScanIterator {
@@ -32,6 +36,9 @@ namespace PeterDB {
     // RM_IndexScanIterator is an iterator to go through index entries
     class RM_IndexScanIterator {
     public:
+        IXFileHandle ixFileHandle;
+        IX_ScanIterator ix_ScanIterator;
+
         RM_IndexScanIterator();    // Constructor
         ~RM_IndexScanIterator();    // Destructor
 
@@ -43,11 +50,13 @@ namespace PeterDB {
     // Relation Manager
     class RelationManager {
     private:
-        void *tableIdBuffer, *attributesBuffer, *positionBuffer;
+        void *tableIdBuffer, *attributesBuffer, *positionBuffer, *tupleBuffer;
 
         static std::vector<Attribute> getTablesAttrs();
 
         static std::vector<Attribute> getColumnsAttrs();
+
+        static std::vector<Attribute> getIndexesAttrs();
 
         static std::vector<std::string> getAttributeAttrs();
 
@@ -65,6 +74,8 @@ namespace PeterDB {
         RC insertColumn(FileHandle &columnsHandle, int tableId, const Attribute &attr, int position, int version);
 
         RC insertColumns(FileHandle &columnsHandle, int tableId, const std::vector<Attribute> &attrs);
+
+        RC insertIndexes(FileHandle &indexesHandle, int tableId, int columnPosition);
 
         RC createCatalog();
 
@@ -119,6 +130,14 @@ namespace PeterDB {
         RC dropAttribute(const std::string &tableName, const std::string &attributeName);
 
         // QE IX related
+        RC modifyIndex(const std::string &tableName, const void *data, const RID &rid, std::vector<Attribute> &attrs, std::vector<int> &positions, bool insertion = true);
+
+        int getColumnPosition(const std::string &tableName, const std::string &attributeName, Attribute &attrBuffer);
+
+        std::string getIndexFileName(const std::string &tableName, int columnPosition);
+
+        bool hasIndexOn(const std::string &tableName, int columnPosition, RID &rid);
+
         RC createIndex(const std::string &tableName, const std::string &attributeName);
 
         RC destroyIndex(const std::string &tableName, const std::string &attributeName);

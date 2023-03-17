@@ -6,10 +6,8 @@ namespace PeterDB {
         return _index_manager;
     }
 
-    PagedFileManager &pfm = PagedFileManager::instance();
-
     RC IndexManager::createFile(const std::string &fileName) {
-        return pfm.createFile(fileName);
+        return PagedFileManager::instance().createFile(fileName);
     }
 
     bool IndexManager::isLeaf(char *pageBuffer) {
@@ -17,15 +15,15 @@ namespace PeterDB {
     }
 
     RC IndexManager::destroyFile(const std::string &fileName) {
-        return pfm.destroyFile(fileName);
+        return PagedFileManager::instance().destroyFile(fileName);
     }
 
     RC IndexManager::openFile(const std::string &fileName, IXFileHandle &ixFileHandle) {
-        return pfm.openFile(fileName, ixFileHandle.fileHandle);
+        return PagedFileManager::instance().openFile(fileName, ixFileHandle.fileHandle);
     }
 
     RC IndexManager::closeFile(IXFileHandle &ixFileHandle) {
-        return pfm.closeFile(ixFileHandle.fileHandle);
+        return PagedFileManager::instance().closeFile(ixFileHandle.fileHandle);
     }
 
     RC IndexManager::writeRootPageNum(IXFileHandle &ixFileHandle) {
@@ -389,8 +387,9 @@ namespace PeterDB {
             insertLeaf(leafBuffer, 1 + sizeof(PageIndex), key, rid, attribute.type);
             return ixFileHandle.fileHandle.appendPage(leafBuffer);
         }
-        if (attribute.type != ixFileHandle.keyType) return ERR_INDEX_UNMATCHED_TYPE;
+
         readRootPageNum(ixFileHandle);
+        if (attribute.type != ixFileHandle.keyType) return ERR_INDEX_UNMATCHED_TYPE;
         Entry childEntry;
         rc =  insert(ixFileHandle, ixFileHandle.rootPageNum, key, rid, childEntry, attribute.type);
         delete[] childEntry.key;
