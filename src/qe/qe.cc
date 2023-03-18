@@ -167,7 +167,7 @@ namespace PeterDB {
         int offset = bitmapBufferBytes, length;
         bool isNull;
         for (int i = 0; i < attrsBufferSize; i++) {
-            isNull = ((char *) bitmapBuffer)[i / 8] >> (7 - i % 8) & (unsigned) 1;
+            isNull = (((char *) bitmapBuffer)[i / 8] >> (7 - i % 8) & 1u) != 0u;
             if (isNull) {
                 offsets.push_back({isNull, {0, 0}});
                 continue;
@@ -190,6 +190,7 @@ namespace PeterDB {
                         std::memcpy((char *) data + offset, (char *) dataBuffer + offsets[j].second.first, offsets[j].second.second);
                         offset = offset + offsets[j].second.second;
                     }
+                    break;
                 }
             }
         }
