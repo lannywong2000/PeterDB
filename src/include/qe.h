@@ -307,7 +307,7 @@ namespace PeterDB {
         Iterator *iter;
         const Attribute &aggAttr;
         AggregateOp op;
-        const Attribute *groupAttr;
+        Attribute groupAttr;
         bool hasGroupBy, singleResultReturned = false;
         std::vector<Attribute> attrs, outputAttrs;
         int attrsSize, bitmapBytes, aggAttrPos = -1, groupAttrPos = -1;

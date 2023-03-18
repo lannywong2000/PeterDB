@@ -433,7 +433,7 @@ namespace PeterDB {
         return -1;
     }
 
-    Aggregate::Aggregate(Iterator *input, const Attribute &aggAttr, AggregateOp op) : iter(input), aggAttr(aggAttr), op(op), groupAttr(nullptr), hasGroupBy(false) {
+    Aggregate::Aggregate(Iterator *input, const Attribute &aggAttr, AggregateOp op) : iter(input), aggAttr(aggAttr), op(op), hasGroupBy(false) {
         iter->getAttributes(attrs);
         attrsSize = attrs.size();
         bitmapBytes = attrsSize % 8 ? attrsSize / 8 + 1 : attrsSize / 8;
@@ -453,7 +453,7 @@ namespace PeterDB {
         outputAttrs[0].type = TypeReal;
     }
 
-    Aggregate::Aggregate(Iterator *input, const Attribute &aggAttr, const Attribute &groupAttr, AggregateOp op) : iter(input), aggAttr(aggAttr), op(op), groupAttr(&groupAttr), hasGroupBy(true) {
+    Aggregate::Aggregate(Iterator *input, const Attribute &aggAttr, const Attribute &groupAttr, AggregateOp op) : iter(input), aggAttr(aggAttr), op(op), groupAttr(groupAttr), hasGroupBy(true) {
         iter->getAttributes(attrs);
         attrsSize = attrs.size();
         bitmapBytes = attrsSize % 8 ? attrsSize / 8 + 1 : attrsSize / 8;
@@ -626,7 +626,7 @@ namespace PeterDB {
     }
 
     RC Aggregate::getGroupResult(void *data) {
-        switch (groupAttr->type) {
+        switch (groupAttr.type) {
             case 0:
                 std::cout << resultIndex << " " << intResultsSize << std::endl;
                 if (resultIndex >= intResultsSize) return QE_EOF;
