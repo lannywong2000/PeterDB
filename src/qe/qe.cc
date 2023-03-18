@@ -579,9 +579,17 @@ namespace PeterDB {
                 }
         }
         resultIndex = 0;
+
+        intResultsSize = intResults.size();
+        floatResultsSize = floatResults.size();
+        varCharResultsSize = varCharResults.size();
     }
 
     Aggregate::~Aggregate() {
+        attrs.clear();
+        intResults.clear();
+        floatResults.clear();
+        varCharResults.clear();
         free(bitmap);
         free(tupleBuffer);
     }
@@ -620,28 +628,22 @@ namespace PeterDB {
     RC Aggregate::getGroupResult(void *data) {
         switch (groupAttr->type) {
             case 0:
-                std::cout << resultIndex << " " << intResults.size() << std::endl;
-                if (resultIndex >= intResults.size()) return QE_EOF;
+                if (resultIndex >= intResultsSize) return QE_EOF;
                 std::memcpy((char *) data + 1, &intResults[resultIndex].first, sizeof(int));
                 std::memcpy((char *) data + 1 + sizeof(int), &intResults[resultIndex].second, sizeof(float));
                 break;
             case 1:
-                std::cout << resultIndex << " " << floatResults.size() << std::endl;
-                if (resultIndex >= floatResults.size()) return QE_EOF;
+                if (resultIndex >= floatResultsSize) return QE_EOF;
                 std::memcpy((char *) data + 1, &floatResults[resultIndex].first, sizeof(float));
                 std::memcpy((char *) data + 1 + sizeof(float), &floatResults[resultIndex].second, sizeof(float));
                 break;
             default:
-                std::cout << resultIndex << " " << floatResults.size() << std::endl;
-                if (resultIndex >= varCharResults.size()) return QE_EOF;
+                if (resultIndex >= varCharResultsSize) return QE_EOF;
                 int length = varCharResults[resultIndex].first.size();
                 std::memcpy((char *) data + 1, &length, sizeof(int));
                 std::memcpy((char *) data + 1+ sizeof(int), varCharResults[resultIndex].first.c_str(), length);
                 std::memcpy((char *) data + 1 + sizeof(int) + length, &varCharResults[resultIndex].second, sizeof(float));
         }
-        int toyInt;
-        std::memcpy(&toyInt, (char *) data + 1, sizeof(int));
-        std::cout << toyInt << std::endl;
         std::memset(data, 0, 1);
         resultIndex = resultIndex + 1;
         return 0;
