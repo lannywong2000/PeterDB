@@ -312,9 +312,6 @@ namespace PeterDB {
         std::vector<Attribute> attrs, outputAttrs;
         int attrsSize, bitmapBytes, aggAttrPos = -1, groupAttrPos = -1;
         void *bitmap = nullptr, *tupleBuffer = nullptr;
-        std::unordered_map<int, std::pair<float, int>> intHm;
-        std::unordered_map<float, std::pair<float, int>> floatHm;
-        std::unordered_map<std::string, std::pair<float, int>> varCharHm;
         std::vector<std::pair<int, float>> intResults;
         std::vector<std::pair<float, float>> floatResults;
         std::vector<std::pair<std::string, float>> varCharResults;

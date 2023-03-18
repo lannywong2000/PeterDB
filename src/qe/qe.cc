@@ -481,6 +481,10 @@ namespace PeterDB {
         outputAttrs[1].length = 4;
         outputAttrs[1].type = TypeReal;
 
+        std::unordered_map<int, std::pair<float, int>> intHm;
+        std::unordered_map<float, std::pair<float, int>> floatHm;
+        std::unordered_map<std::string, std::pair<float, int>> varCharHm;
+
         int intBuffer = 0; float floatBuffer = 0; std::string varCharBuffer;
         int groupIntBuffer; float groupFloatBuffer; std::string groupVarCharBuffer;
         while (iter->getNextTuple(tupleBuffer) != QE_EOF) {
@@ -578,13 +582,6 @@ namespace PeterDB {
     }
 
     Aggregate::~Aggregate() {
-        attrs.clear();
-        intHm.clear();
-        floatHm.clear();
-        varCharHm.clear();
-        intResults.clear();
-        floatResults.clear();
-        varCharResults.clear();
         free(bitmap);
         free(tupleBuffer);
     }
