@@ -634,11 +634,13 @@ namespace PeterDB {
                 std::memcpy((char *) data + 1 + sizeof(int), &intResults[resultIndex].second, sizeof(float));
                 break;
             case 1:
+                std::cout << resultIndex << " " << floatResultsSize << std::endl;
                 if (resultIndex >= floatResultsSize) return QE_EOF;
                 std::memcpy((char *) data + 1, &floatResults[resultIndex].first, sizeof(float));
                 std::memcpy((char *) data + 1 + sizeof(float), &floatResults[resultIndex].second, sizeof(float));
                 break;
             default:
+                std::cout << resultIndex << " " << varCharResultsSize << std::endl;
                 if (resultIndex >= varCharResultsSize) return QE_EOF;
                 int length = varCharResults[resultIndex].first.size();
                 std::memcpy((char *) data + 1, &length, sizeof(int));
