@@ -163,8 +163,8 @@ namespace PeterDB {
         RC rc = iter->getNextTuple(dataBuffer);
         if (rc != 0) return rc;
         float floatBuffer;
-        std::memcpy(&floatBuffer, (char *) data + 1 + sizeof(int), sizeof(float));
-        if (floatBuffer != 0) std::cout << floatBuffer << std::endl;
+        std::memcpy(&floatBuffer, (char *) dataBuffer + 1 + sizeof(int), sizeof(float));
+        std::cout << floatBuffer << std::endl;
         std::memcpy(bitmapBuffer, dataBuffer, bitmapBufferBytes);
         std::vector<std::pair<bool, std::pair<int, int>>> offsets;
         int offset = bitmapBufferBytes, length;
