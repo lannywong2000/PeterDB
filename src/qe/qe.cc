@@ -1,5 +1,5 @@
 #include "src/include/qe.h"
-#include <cassert>
+#include <iostream>
 
 namespace PeterDB {
     Filter::Filter(Iterator *input, const Condition &condition) : iter(input), cond(condition) {
@@ -162,6 +162,9 @@ namespace PeterDB {
     RC Project::getNextTuple(void *data) {
         RC rc = iter->getNextTuple(dataBuffer);
         if (rc != 0) return rc;
+        float floatBuffer;
+        std::memcpy(&floatBuffer, (char *) data + 1 + sizeof(int), sizeof(float));
+        if (floatBuffer != 0) std::cout << floatBuffer << std::endl;
         std::memcpy(bitmapBuffer, dataBuffer, bitmapBufferBytes);
         std::vector<std::pair<bool, std::pair<int, int>>> offsets;
         int offset = bitmapBufferBytes, length;

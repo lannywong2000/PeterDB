@@ -5,10 +5,10 @@
 #include <string>
 #include <limits>
 #include <unordered_map>
+#include <cassert>
 
 #include "rm.h"
 #include "ix.h"
-#include <iostream>
 
 namespace PeterDB {
 
@@ -110,13 +110,7 @@ namespace PeterDB {
         };
 
         RC getNextTuple(void *data) override {
-            RC rc = iter.getNextTuple(rid, data);
-            if (rc == 0) {
-                float floatBuffer;
-                std::memcpy(&floatBuffer, (char *) data + 1 + sizeof(int), sizeof(float));
-                std::cout << floatBuffer << std::endl;
-            }
-            return rc;
+            return iter.getNextTuple(rid, data);
         };
 
         RC getAttributes(std::vector<Attribute> &attributes) const override {
