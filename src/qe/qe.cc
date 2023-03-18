@@ -278,6 +278,7 @@ namespace PeterDB {
             inner->setIterator();
             rc = inner->getNextTuple(innerTupleBuffer);
             if (rc != 0) return;
+            innerHasNext = true;
         }
         innerBufferDirectory.clear();
         innerBufferIndex = 0;
