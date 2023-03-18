@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <unordered_map>
+#include <iostream>
 
 #include "src/include/qe.h"
 #include "general_test_utils.h"
@@ -368,6 +369,9 @@ namespace PeterDBTesting {
                 else if (tableName == "group")
                     prepareGroupTable(nullsIndicator, i, inBuffer);
 
+                float floatBuffer;
+                std::memcpy(&floatBuffer, (char *) inBuffer + 1 + sizeof(int), sizeof(float));
+                std::cout << floatBuffer << std::endl;
                 ASSERT_EQ(rm.insertTuple(tableName, inBuffer, rid), success)
                                             << "relationManager.insertTuple() should succeed.";
                 rids.emplace_back(rid);
