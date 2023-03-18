@@ -639,7 +639,9 @@ namespace PeterDB {
                 std::memcpy((char *) data + 1+ sizeof(int), varCharResults[resultIndex].first.c_str(), length);
                 std::memcpy((char *) data + 1 + sizeof(int) + length, &varCharResults[resultIndex].second, sizeof(float));
         }
-        std::cout << "here" << std::endl;
+        int toyInt;
+        std::memcpy(&toyInt, (char *) data + 1, sizeof(int));
+        std::cout << toyInt << std::endl;
         std::memset(data, 0, 1);
         resultIndex = resultIndex + 1;
         return 0;
