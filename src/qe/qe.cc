@@ -1,4 +1,5 @@
 #include "src/include/qe.h"
+#include <iostream>
 
 namespace PeterDB {
     Filter::Filter(Iterator *input, const Condition &condition) : iter(input), cond(condition) {
@@ -638,6 +639,7 @@ namespace PeterDB {
                 std::memcpy((char *) data + 1+ sizeof(int), varCharResults[resultIndex].first.c_str(), length);
                 std::memcpy((char *) data + 1 + sizeof(int) + length, &varCharResults[resultIndex].second, sizeof(float));
         }
+        std::cout << "here" << std::endl;
         std::memset(data, 0, 1);
         resultIndex = resultIndex + 1;
         return 0;
