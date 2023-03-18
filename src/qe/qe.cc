@@ -628,6 +628,7 @@ namespace PeterDB {
     RC Aggregate::getGroupResult(void *data) {
         switch (groupAttr->type) {
             case 0:
+                std::cout << resultIndex << " " << intResultsSize << std::endl;
                 if (resultIndex >= intResultsSize) return QE_EOF;
                 std::memcpy((char *) data + 1, &intResults[resultIndex].first, sizeof(int));
                 std::memcpy((char *) data + 1 + sizeof(int), &intResults[resultIndex].second, sizeof(float));
