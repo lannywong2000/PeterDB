@@ -1,5 +1,4 @@
 #include "src/include/qe.h"
-#include <iostream>
 
 namespace PeterDB {
     Filter::Filter(Iterator *input, const Condition &condition) : iter(input), cond(condition) {
@@ -579,10 +578,6 @@ namespace PeterDB {
                 }
         }
         resultIndex = 0;
-
-        intResultsSize = intResults.size();
-        floatResultsSize = floatResults.size();
-        varCharResultsSize = varCharResults.size();
     }
 
     Aggregate::~Aggregate() {
@@ -628,19 +623,17 @@ namespace PeterDB {
     RC Aggregate::getGroupResult(void *data) {
         switch (groupAttr.type) {
             case 0:
-                std::cout << resultIndex << " " << intResultsSize << std::endl;
-                if (resultIndex >= intResultsSize) return QE_EOF;
+                if (resultIndex >= intResults.size()) return QE_EOF;
                 std::memcpy((char *) data + 1, &intResults[resultIndex].first, sizeof(int));
                 std::memcpy((char *) data + 1 + sizeof(int), &intResults[resultIndex].second, sizeof(float));
                 break;
             case 1:
-                if (resultIndex >= floatResultsSize) return QE_EOF;
+                if (resultIndex >= floatResults.size()) return QE_EOF;
                 std::memcpy((char *) data + 1, &floatResults[resultIndex].first, sizeof(float));
                 std::memcpy((char *) data + 1 + sizeof(float), &floatResults[resultIndex].second, sizeof(float));
                 break;
             default:
-                std::cout << resultIndex << " " << varCharResultsSize << std::endl;
-                if (resultIndex >= varCharResultsSize) return QE_EOF;
+                if (resultIndex >= varCharResults.size()) return QE_EOF;
                 int length = varCharResults[resultIndex].first.size();
                 std::memcpy((char *) data + 1, &length, sizeof(int));
                 std::memcpy((char *) data + 1+ sizeof(int), varCharResults[resultIndex].first.c_str(), length);

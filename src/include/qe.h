@@ -315,7 +315,7 @@ namespace PeterDB {
         std::vector<std::pair<int, float>> intResults;
         std::vector<std::pair<float, float>> floatResults;
         std::vector<std::pair<std::string, float>> varCharResults;
-        int resultIndex, intResultsSize, floatResultsSize, varCharResultsSize;
+        int resultIndex;
 
         RC getResult(void *data);
 
