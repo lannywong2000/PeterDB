@@ -652,8 +652,11 @@ namespace PeterDB {
     }
 
     RC Aggregate::getNextTuple(void *data) {
-        if (hasGroupBy) return getGroupResult(data);
-        std::cout << "not here" << std::endl;
+        if (hasGroupBy) {
+            RC rc = getGroupResult(data);
+            std::cout << rc << std::endl;
+            return rc;
+        }
         return getResult(data);
     }
 
