@@ -575,6 +575,10 @@ namespace PeterDB {
                 }
         }
         resultIndex = 0;
+
+        std::cout << intResults.size() << std::endl;
+        std::cout << floatResults.size() << std::endl;
+        std::cout << varCharResults.size() << std::endl;
     }
 
     Aggregate::~Aggregate() {
