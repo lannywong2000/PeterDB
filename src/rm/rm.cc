@@ -596,8 +596,8 @@ namespace PeterDB {
     }
 
     // QE IX related
-    RC RelationManager::modifyIndex(const std::string &tableName, const void *data, const RID &rid, std::vector<Attribute> &attrs,
-                                    std::vector<int> &positions, bool insertion) {
+    RC RelationManager::modifyIndex(const std::string &tableName, const void *data, const RID &rid, const std::vector<Attribute> &attrs,
+                                    const std::vector<int> &positions, bool insertion) {
         RC rc;
         int size = attrs.size();
         RID ridBuffer;
@@ -697,16 +697,20 @@ namespace PeterDB {
         if (rc != 0) return rc;
 
         RM_ScanIterator rm_ScanIterator;
-        std::vector<Attribute> attrs;
-        std::vector<int> positions;
-        FileHandle fileHandle;
-        rbfm.openFile(getFileName(tableName), fileHandle);
-        getVersionedAttributes(tableName, fileHandle.version, attrs, positions);
-        rbfm.closeFile(fileHandle);
-        std::vector<std::string> attrNames;
-        for (const auto &attr : attrs) attrNames.push_back(attr.name);
-        scan(tableName, "", NO_OP, nullptr, attrNames, rm_ScanIterator);
-        while (rm_ScanIterator.getNextTuple(rid, tupleBuffer) != RM_EOF) modifyIndex(tableName, tupleBuffer, rid, attrs, positions);
+        scan(tableName, "", NO_OP, nullptr, {attributeName}, rm_ScanIterator);
+        IXFileHandle ixFileHandle;
+        ix.openFile(indexFileName, ixFileHandle);
+        while (rm_ScanIterator.getNextTuple(rid, tupleBuffer) != RM_EOF) {
+            if (((char *) tupleBuffer)[0] >> 7u & 1u) continue;
+            int keyLength = 0;
+            if (attrBuffer.type == 2) std::memcpy(&keyLength, (char *) tupleBuffer + 1, sizeof(int));
+            keyLength = keyLength + sizeof(int);
+            char key[keyLength];
+            std::memcpy(key, (char *) tupleBuffer + 1, keyLength);
+            rc = ix.insertEntry(ixFileHandle, attrBuffer, key, rid);
+            if (rc != 0) return rc;
+        }
+        ix.closeFile(ixFileHandle);
         rm_ScanIterator.close();
 
         return 0;

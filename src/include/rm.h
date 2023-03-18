@@ -130,7 +130,7 @@ namespace PeterDB {
         RC dropAttribute(const std::string &tableName, const std::string &attributeName);
 
         // QE IX related
-        RC modifyIndex(const std::string &tableName, const void *data, const RID &rid, std::vector<Attribute> &attrs, std::vector<int> &positions, bool insertion = true);
+        RC modifyIndex(const std::string &tableName, const void *data, const RID &rid, const std::vector<Attribute> &attrs, const std::vector<int> &positions, bool insertion = true);
 
         int getColumnPosition(const std::string &tableName, const std::string &attributeName, Attribute &attrBuffer);
 
