@@ -482,7 +482,7 @@ namespace PeterDB {
 
         int intBuffer = 0; float floatBuffer = 0; std::string varCharBuffer;
         int groupIntBuffer; float groupFloatBuffer; std::string groupVarCharBuffer;
-        while (iter->getNextTuple(tupleBuffer) == 0) {
+        while (iter->getNextTuple(tupleBuffer) != QE_EOF) {
             if (!getAttr((char *) tupleBuffer, attrs, aggAttrPos, (char *) bitmap, bitmapBytes, intBuffer, floatBuffer, varCharBuffer)) continue;
             if (!getAttr((char *) tupleBuffer, attrs, groupAttrPos, (char *) bitmap, bitmapBytes, groupIntBuffer, groupFloatBuffer, groupVarCharBuffer)) continue;
             switch (groupAttr.type) {
@@ -490,6 +490,8 @@ namespace PeterDB {
                     if (intHm.find(groupIntBuffer) == intHm.end()) {
                         if (op == 0) intHm[groupIntBuffer].first = INT_MAX;
                         else if (op == 1) intHm[groupIntBuffer].first = INT_MIN;
+                        else intHm[groupIntBuffer].first = 0;
+                        intHm[groupIntBuffer].second = 0;
                     }
                     switch (op) {
                         case 0:
@@ -509,6 +511,8 @@ namespace PeterDB {
                     if (floatHm.find(groupFloatBuffer) == floatHm.end()) {
                         if (op == 0) floatHm[groupFloatBuffer].first = INT_MAX;
                         else if (op == 1) floatHm[groupFloatBuffer].first = INT_MIN;
+                        else floatHm[groupFloatBuffer].first = 0;
+                        floatHm[groupFloatBuffer].second = 0;
                     }
                     switch (op) {
                         case 0:
@@ -528,6 +532,8 @@ namespace PeterDB {
                     if (varCharHm.find(groupVarCharBuffer) == varCharHm.end()) {
                         if (op == 0) varCharHm[groupVarCharBuffer].first = INT_MAX;
                         else if (op == 1) varCharHm[groupVarCharBuffer].first = INT_MIN;
+                        else varCharHm[groupVarCharBuffer].first = 0;
+                        varCharHm[groupVarCharBuffer].second = 0;
                     }
                     switch (op) {
                         case 0:
@@ -630,7 +636,7 @@ namespace PeterDB {
                 int length = varCharResults[resultIndex].first.size();
                 std::memcpy((char *) data + 1, &length, sizeof(int));
                 std::memcpy((char *) data + 1+ sizeof(int), varCharResults[resultIndex].first.c_str(), length);
-                std::memcpy((char *) data + 1 + sizeof(int) + length, &floatResults[resultIndex].second, sizeof(float));
+                std::memcpy((char *) data + 1 + sizeof(int) + length, &varCharResults[resultIndex].second, sizeof(float));
         }
         std::memset(data, 0, 1);
         resultIndex = resultIndex + 1;
