@@ -336,12 +336,11 @@ namespace PeterDB {
         FileHandle fileHandle;
         rbfm.openFile(getFileName(tableName), fileHandle);
         getVersionedAttributes(tableName, fileHandle.version, attrs, positions);
+        readTuple(tableName, rid, tupleBuffer);
         rbfm.openFile(getFileName(tableName), fileHandle);
         RC rc = rbfm.deleteRecord(fileHandle, attrs, rid);
         rbfm.closeFile(fileHandle);
         if (rc != 0) return rc;
-
-        readTuple(tableName, rid, tupleBuffer);
         return modifyIndex(tableName, tupleBuffer, rid, attrs, positions, false);
     }
 
