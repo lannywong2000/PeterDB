@@ -71,6 +71,18 @@ namespace PeterDB {
             }
             return true;
         }
+
+        int getTupleLength(char *tupleBuffer, const std::vector<Attribute> &attrs, int attrsSize, char *bitmap, int bitmapBytes) {
+            int tupleLength = bitmapBytes, length;
+            std::memcpy(bitmap, tupleBuffer, bitmapBytes);
+            for (int i = 0; i < attrsSize; i++) {
+                if (bitmap[i / 8] >> (7 - i % 8) & (unsigned) 1) continue;
+                length = 0;
+                if (attrs[i].type == 2) std::memcpy(&length, tupleBuffer + tupleLength, sizeof(int));
+                tupleLength = tupleLength + length + sizeof(int);
+            }
+            return tupleLength;
+        }
     };
 
     class TableScan : public Iterator {
@@ -243,8 +255,6 @@ namespace PeterDB {
         int innerBufferIndex = 0, outerBufferIndex = 0;
         std::vector<std::pair<int, int>> innerBufferDirectory;
 
-        int getTupleLength(char *tupleBuffer, const std::vector<Attribute> &attrs, int attrsSize, char *bitmap, int bitmapBytes);
-
         void fillInnerBuffer();
 
         RC fillOuterBuffer();
@@ -269,6 +279,16 @@ namespace PeterDB {
     };
 
     class INLJoin : public Iterator {
+        Iterator *outer;
+        IndexScan *inner;
+        const Condition &cond;
+        std::vector<Attribute> attrs, outerAttrs, innerAttrs;
+        int attrsSize, outerAttrsSize, innerAttrsSize, outerBitmapBytes, innerBitmapBytes, bitmapBytes, outerAttrPos = -1, innerAttrPos = -1;
+        void *outerBitmap = nullptr, *innerBitmap = nullptr, *bitmap = nullptr, *innerTupleBuffer = nullptr, *outerTupleBuffer = nullptr;
+        bool innerHasNext = false;
+
+        void joinTuples(void *data);
+
         // Index nested-loop join operator
     public:
         INLJoin(Iterator *leftIn,           // Iterator of input R

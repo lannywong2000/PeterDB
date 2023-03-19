@@ -260,18 +260,6 @@ namespace PeterDB {
         free(outerTupleBuffer);
     }
 
-    int BNLJoin::getTupleLength(char *tupleBuffer, const std::vector<Attribute> &attrs, int attrsSize, char *bitmap, int bitmapBytes) {
-        int tupleLength = bitmapBytes, length;
-        std::memcpy(bitmap, tupleBuffer, bitmapBytes);
-        for (int i = 0; i < attrsSize; i++) {
-            if (bitmap[i / 8] >> (7 - i % 8) & (unsigned) 1) continue;
-            length = 0;
-            if (attrs[i].type == 2) std::memcpy(&length, tupleBuffer + tupleLength, sizeof(int));
-            tupleLength = tupleLength + length + sizeof(int);
-        }
-        return tupleLength;
-    }
-
     void BNLJoin::fillInnerBuffer() {
         RC rc;
         if (!innerHasNext) {
@@ -368,6 +356,7 @@ namespace PeterDB {
         }
         int intBuffer; float floatBuffer; std::string varCharBuffer;
         getAttr((char *) innerBuffer + innerBufferDirectory[innerBufferIndex].first, rightAttrs, innerAttrPos, (char *) rightBitmap, rightBitmapBytes, intBuffer, floatBuffer, varCharBuffer);
+        int leftOffset, leftLength;
         switch (rightAttrs[innerAttrPos].type){
             case 0:
                 if (outerBufferIndex >= intHm[intBuffer].size()) {
@@ -375,6 +364,8 @@ namespace PeterDB {
                     innerBufferIndex = innerBufferIndex + 1;
                     return getNextTuple(data);
                 }
+                leftOffset = intHm[intBuffer][outerBufferIndex].first;
+                leftLength = intHm[intBuffer][outerBufferIndex].second;
                 break;
             case 1:
                 if (outerBufferIndex >= floatHm[floatBuffer].size()) {
@@ -382,6 +373,8 @@ namespace PeterDB {
                     innerBufferIndex = innerBufferIndex + 1;
                     return getNextTuple(data);
                 }
+                leftOffset = floatHm[floatBuffer][outerBufferIndex].first;
+                leftLength = floatHm[floatBuffer][outerBufferIndex].second;
                 break;
             default:
                 if (outerBufferIndex >= varCharHm[varCharBuffer].size()) {
@@ -389,8 +382,10 @@ namespace PeterDB {
                     innerBufferIndex = innerBufferIndex + 1;
                     return getNextTuple(data);
                 }
+                leftOffset = varCharHm[varCharBuffer][outerBufferIndex].first;
+                leftLength = varCharHm[varCharBuffer][outerBufferIndex].second;
         }
-        joinTuples(intHm[intBuffer][outerBufferIndex].first, intHm[intBuffer][outerBufferIndex].second, innerBufferDirectory[innerBufferIndex].first, innerBufferDirectory[innerBufferIndex].second, data);
+        joinTuples(leftOffset, leftLength, innerBufferDirectory[innerBufferIndex].first, innerBufferDirectory[innerBufferIndex].second, data);
         outerBufferIndex = outerBufferIndex + 1;
         return 0;
     }
@@ -401,20 +396,106 @@ namespace PeterDB {
         return 0;
     }
 
-    INLJoin::INLJoin(Iterator *leftIn, IndexScan *rightIn, const Condition &condition) {
+    INLJoin::INLJoin(Iterator *leftIn, IndexScan *rightIn, const Condition &condition) : outer(leftIn), inner(rightIn), cond(condition) {
+        assert(cond.bRhsIsAttr == true && cond.op == EQ_OP);
+        outer->getAttributes(outerAttrs);
+        inner->getAttributes(innerAttrs);
+        for (const auto &attr : outerAttrs) attrs.push_back(attr);
+        for (const auto &attr : innerAttrs) attrs.push_back(attr);
 
+        outerAttrsSize = outerAttrs.size();
+        innerAttrsSize = innerAttrs.size();
+        attrsSize = outerAttrsSize + innerAttrsSize;
+
+        for (int i = 0; i < outerAttrsSize; i++) {
+            if (outerAttrs[i].name == cond.lhsAttr) {
+                outerAttrPos = i;
+                break;
+            }
+        }
+        assert(outerAttrPos != -1);
+        for (int i = 0; i < innerAttrsSize; i++) {
+            if (innerAttrs[i].name == cond.rhsAttr) {
+                innerAttrPos = i;
+                break;
+            }
+        }
+        assert(innerAttrPos != -1);
+        assert(innerAttrs[outerAttrPos].type == outerAttrs[innerAttrPos].type);
+
+        outerBitmapBytes = outerAttrsSize % 8 ? outerAttrsSize / 8 + 1 : outerAttrsSize / 8;
+        innerBitmapBytes = innerAttrsSize % 8 ? innerAttrsSize / 8 + 1 : innerAttrsSize / 8;
+        bitmapBytes = attrsSize % 8 ? attrsSize / 8 + 1 : attrsSize / 8;
+        outerBitmap = malloc(outerBitmapBytes);
+        innerBitmap = malloc(innerBitmapBytes);
+        bitmap = malloc(bitmapBytes);
+
+        innerTupleBuffer = malloc(PAGE_SIZE);
+        outerTupleBuffer = malloc(PAGE_SIZE);
     }
 
     INLJoin::~INLJoin() {
+        attrs.clear();
+        outerAttrs.clear();
+        innerAttrs.clear();
+        free(outerBitmap);
+        free(innerBitmap);
+        free(bitmap);
+        free(innerTupleBuffer);
+        free(outerTupleBuffer);
+    }
 
+    void INLJoin::joinTuples(void *data) {
+        int outerTupleLength = getTupleLength((char *) outerTupleBuffer, outerAttrs, outerAttrsSize, (char *) outerBitmap, outerBitmapBytes);
+        int innerTupleLength = getTupleLength((char *) innerTupleBuffer, innerAttrs, innerAttrsSize, (char *) innerBitmap, innerBitmapBytes);
+
+        std::memset(bitmap, 0 , bitmapBytes);
+        for (int i = 0; i < outerAttrsSize; i++) {
+            if (((char *) outerBitmap)[i / 8] >> (7 - i % 8) & (unsigned) 1) {
+                ((char *) bitmap)[i / 8] |= (unsigned) 1 << (7 - i % 8);
+            }
+        }
+        for (int i = 0; i < innerAttrsSize; i++) {
+            if (((char *) innerBitmap)[i / 8] >> (7 - i % 8) & (unsigned) 1) {
+                ((char *) bitmap)[(i + outerAttrsSize) / 8] |= (unsigned) 1 << (7 - (i + outerAttrsSize) % 8);
+            }
+        }
+        std::memcpy(data, bitmap, bitmapBytes);
+        std::memcpy((char *) data + bitmapBytes, (char *) outerTupleBuffer + outerBitmapBytes, outerTupleLength - outerBitmapBytes);
+        std::memcpy((char *) data + bitmapBytes + outerTupleLength - outerBitmapBytes, (char *) innerTupleBuffer + innerBitmapBytes, innerTupleLength - innerBitmapBytes);
     }
 
     RC INLJoin::getNextTuple(void *data) {
-        return QE_EOF;
+        if (!innerHasNext) {
+            RC rc = outer->getNextTuple(outerTupleBuffer);
+            if (rc != 0) return QE_EOF;
+            int intBuffer; float floatBuffer; std::string varCharBuffer;
+            getAttr((char *) outerTupleBuffer, outerAttrs, outerAttrPos, (char *) outerBitmap, outerBitmapBytes, intBuffer, floatBuffer, varCharBuffer);
+            switch (innerAttrs[innerAttrPos].type) {
+                case 0:
+                    inner->setIterator(&intBuffer, &intBuffer, true, true);
+                    break;
+                case 1:
+                    inner->setIterator(&floatBuffer, &floatBuffer, true, true);
+                    break;
+                default:
+                    inner->setIterator(&varCharBuffer, &varCharBuffer, true, true);
+            }
+            innerHasNext = true;
+        }
+        RC rc = inner->getNextTuple(innerTupleBuffer);
+        if (rc != 0) {
+            innerHasNext = false;
+            return getNextTuple(data);
+        }
+        joinTuples(data);
+        return 0;
     }
 
     RC INLJoin::getAttributes(std::vector<Attribute> &attrs) const {
-        return -1;
+        attrs.clear();
+        attrs = this->attrs;
+        return 0;
     }
 
     GHJoin::GHJoin(Iterator *leftIn, Iterator *rightIn, const Condition &condition, const unsigned int numPartitions) {
